@@ -1,0 +1,2837 @@
+<!doctype html>
+<html lang="ko"><head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>목포 ON: AI 로컬 상권 탐험 지도</title>
+  <meta name="description" content="실시간 GPS 위치 추적, OpenStreetMap 실데이터 기반 목포 상권 탐색, TensorFlow.js 머신러닝 추천 및 K-Means 상권 분석 단일 파일 웹앱">
+  <meta property="og:title" content="목포 ON: AI 로컬 상권 탐험 지도">
+  <meta property="og:description" content="실시간 GPS 위치 추적, OpenStreetMap 실데이터 기반 목포 상권 탐색, TensorFlow.js 머신러닝 추천 및 K-Means 상권 분석 단일 파일 웹앱">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&amp;family=Plus+Jakarta+Sans:wght@400;600;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" crossorigin="anonymous"></script>
+  <style>
+    :root {
+      --bg-app: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-muted: #f1f5f9;
+      --border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-sub: #475569;
+      --text-muted: #64748b;
+      --primary: #0284c7;
+      --primary-hover: #0369a1;
+      --indigo: #4f46e5;
+      --indigo-soft: #eef2ff;
+      --amber: #d97706;
+      --amber-soft: #fffbeb;
+      --emerald: #059669;
+      --emerald-soft: #ecfdf5;
+      --rose: #e11d48;
+      --rose-soft: #fff1f2;
+      --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08);
+      --shadow-lg: 0 10px 25px -5px rgba(15, 23, 42, 0.14);
+    }
+
+    html.dark {
+      --bg-app: #020617;
+      --bg-surface: #0f172a;
+      --bg-muted: #1e293b;
+      --border: #1e293b;
+      --text-main: #f8fafc;
+      --text-sub: #cbd5e1;
+      --text-muted: #94a3b8;
+      --indigo-soft: rgba(79, 70, 229, 0.16);
+      --amber-soft: rgba(217, 119, 6, 0.16);
+      --emerald-soft: rgba(5, 150, 105, 0.16);
+      --rose-soft: rgba(225, 29, 72, 0.16);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+      font-family: 'Plus Jakarta Sans', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-app);
+      color: var(--text-main);
+      overflow: hidden;
+    }
+
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      height: 100dvh;
+      width: 100vw;
+      overflow: hidden;
+    }
+
+    /* Header */
+    .app-header {
+      height: 56px;
+      background: var(--bg-surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      gap: 10px;
+      flex-shrink: 0;
+      z-index: 40;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: var(--primary);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-weight: 800;
+      font-size: 15px;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+
+    .brand-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .status-pill {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: var(--bg-muted);
+      color: var(--text-sub);
+      white-space: nowrap;
+    }
+
+    @media (min-width: 1024px) {
+      .status-pill { display: inline-flex; }
+    }
+
+    .status-pill.gps-active {
+      background: rgba(2, 132, 199, 0.12);
+      color: var(--primary);
+    }
+
+    .status-pill.sim-active {
+      background: var(--amber-soft);
+      color: var(--amber);
+      border: 1px solid rgba(217, 119, 6, 0.35);
+    }
+
+    .nav-tabs {
+      display: none;
+      align-items: center;
+      gap: 18px;
+    }
+
+    @media (min-width: 768px) {
+      .nav-tabs { display: flex; }
+    }
+
+    .nav-tab {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      padding: 10px 4px;
+      min-height: 44px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-sub);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .nav-tab.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 700;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    button, select, input {
+      font-family: inherit;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 10px;
+      min-height: 40px;
+      padding: 0 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s, transform 0.1s;
+      white-space: nowrap;
+    }
+
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-indigo { background: var(--indigo); color: #fff; }
+    .btn-amber { background: var(--amber); color: #fff; }
+    .btn-danger-soft { background: var(--rose-soft); color: var(--rose); border: 1px solid rgba(225, 29, 72, 0.25); }
+    .btn-muted { background: var(--bg-muted); color: var(--text-main); border: 1px solid var(--border); }
+    .btn-icon { width: 40px; padding: 0; }
+
+    /* Main Viewport */
+    .main-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .view-panel {
+      display: none;
+      width: 100%;
+      height: 100%;
+    }
+
+    .view-panel.active {
+      display: flex;
+    }
+
+    /* Sidebar List */
+    .sidebar {
+      width: 390px;
+      max-width: 100%;
+      height: 100%;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      flex-shrink: 0;
+      z-index: 15;
+    }
+
+    @media (max-width: 767px) {
+      .sidebar-desktop-only { display: none; }
+    }
+
+    .sidebar-controls {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .input-text {
+      width: 100%;
+      min-height: 42px;
+      padding: 8px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-muted);
+      color: var(--text-main);
+      font-size: 12px;
+      outline: none;
+    }
+
+    .input-text:focus { border-color: var(--primary); }
+
+    .cat-strip {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding-bottom: 2px;
+    }
+
+    .cat-strip::-webkit-scrollbar { display: none; }
+
+    .cat-btn {
+      min-height: 36px;
+      padding: 0 11px;
+      border-radius: 8px;
+      border: none;
+      background: var(--bg-muted);
+      color: var(--text-sub);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .cat-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .filter-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 12px;
+    }
+
+    .select-box {
+      min-height: 38px;
+      padding: 0 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--bg-muted);
+      color: var(--text-main);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .origin-bar {
+      padding: 8px 14px;
+      background: var(--bg-muted);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--text-sub);
+      flex-shrink: 0;
+    }
+
+    .ml-bar {
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      background: var(--bg-muted);
+      flex-shrink: 0;
+    }
+
+    .ml-bar.trained {
+      background: var(--indigo-soft);
+      color: var(--indigo);
+    }
+
+    .places-scroll {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .place-card {
+      padding: 14px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+
+    .place-card:hover { background: var(--bg-muted); }
+    .place-card.selected { background: rgba(2, 132, 199, 0.08); }
+
+    .place-card-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .place-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+      color: var(--text-main);
+    }
+
+    .place-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .place-score-box {
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .place-score-val {
+      font-size: 13px;
+      font-weight: 800;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .place-score-val.ml { color: var(--indigo); }
+
+    /* Map Container */
+    .map-wrap {
+      flex: 1;
+      position: relative;
+      height: 100%;
+      width: 100%;
+    }
+
+    #leaflet-map {
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+
+    .map-top-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 64px;
+      z-index: 20;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .radius-group {
+      pointer-events: auto;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 4px;
+      display: inline-flex;
+      gap: 4px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .radius-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-sub);
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .radius-btn.active {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .map-right-controls {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .map-ctl-btn {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-surface);
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .map-ctl-btn.active {
+      background: var(--primary);
+      color: #fff;
+      border-color: var(--primary);
+    }
+
+    .gps-hud {
+      position: absolute;
+      bottom: 14px;
+      left: 12px;
+      right: 12px;
+      max-width: 390px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .hud-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px 14px;
+      box-shadow: var(--shadow-lg);
+      font-size: 12px;
+    }
+
+    .hud-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      padding-top: 8px;
+      margin-top: 8px;
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Detail Sheet */
+    .detail-sheet {
+      width: 390px;
+      max-width: 100%;
+      height: 100%;
+      background: var(--bg-surface);
+      border-left: 1px solid var(--border);
+      display: none;
+      flex-direction: column;
+      z-index: 30;
+    }
+
+    .detail-sheet.open { display: flex; }
+
+    @media (max-width: 767px) {
+      .detail-sheet {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 64px;
+        width: 100%;
+        height: auto;
+        max-height: 78dvh;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        border-radius: 20px 20px 0 0;
+        box-shadow: var(--shadow-lg);
+      }
+    }
+
+    .detail-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .detail-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      font-size: 12px;
+    }
+
+    /* Full Page Views (Dashboard / AI Lab) */
+    .page-scroll {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      padding: 18px;
+      background: var(--bg-app);
+    }
+
+    .container {
+      max-width: 1160px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding-bottom: 32px;
+    }
+
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .grid-5 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+    @media (min-width: 768px) {
+      .grid-2 { grid-template-columns: repeat(2, 1fr); }
+      .grid-3 { grid-template-columns: repeat(3, 1fr); }
+      .grid-4 { grid-template-columns: repeat(4, 1fr); }
+      .grid-5 { grid-template-columns: repeat(5, 1fr); }
+    }
+
+    /* Mobile Bottom Bar */
+    .mobile-nav {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      height: calc(64px + env(safe-area-inset-bottom));
+      padding-bottom: env(safe-area-inset-bottom);
+      background: var(--bg-surface);
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 40;
+    }
+
+    @media (min-width: 768px) {
+      .mobile-nav { display: none; }
+    }
+
+    .mobile-tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 600;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      min-height: 44px;
+      cursor: pointer;
+    }
+
+    .mobile-tab-btn.active {
+      color: var(--primary);
+      font-weight: 700;
+    }
+
+    /* Tables & Charts */
+    table.spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    table.spec-table th, table.spec-table td {
+      text-align: left;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    table.spec-table th {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+
+    .dist-bar-wrap {
+      height: 16px;
+      border-radius: 999px;
+      overflow: hidden;
+      display: flex;
+      background: var(--bg-muted);
+    }
+
+    .loss-chart {
+      height: 110px;
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      padding-top: 10px;
+    }
+
+    .notice-box {
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .notice-amber { background: var(--amber-soft); border: 1px solid rgba(217, 119, 6, 0.35); }
+    .notice-indigo { background: var(--indigo-soft); border: 1px solid rgba(79, 70, 229, 0.3); }
+    .notice-emerald { background: var(--emerald-soft); border: 1px solid rgba(5, 150, 105, 0.3); }
+    .notice-rose { background: var(--rose-soft); border: 1px solid rgba(225, 29, 72, 0.3); }
+
+    .nav-links-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .nav-link-btn {
+      min-height: 44px;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .district-float-card {
+      position: absolute;
+      bottom: 14px;
+      right: 12px;
+      left: 12px;
+      z-index: 25;
+      max-width: 370px;
+      margin-left: auto;
+      display: none;
+    }
+
+    .district-float-card.open { display: block; }
+
+    @keyframes pulseDot {
+      0%, 100% { transform: scale(1); opacity: 0.7; }
+      50% { transform: scale(1.6); opacity: 0.15; }
+    }
+
+    .gps-pulse {
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(2, 132, 199, 0.35);
+      animation: pulseDot 1.8s infinite;
+      position: absolute;
+    }
+
+    .gps-core {
+      width: 14px;
+      height: 14px;
+      border-radius: 999px;
+      background: #0284c7;
+      border: 2px solid #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      position: relative;
+      z-index: 2;
+    }
+
+    .gps-core.sim { background: #d97706; }
+
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 80;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .modal-backdrop.open { display: flex; }
+  </style>
+<script src="/_aistudio-iframe.js?v=1f94f900"></script><script src="https://cdn.jsdelivr.net/npm/html2canvas-pro@2.0.4"></script><style>.aistudio-hover-highlight { box-shadow: inset 0 0 0 0.5px white, inset 0 0 0 1.5px rgba(128,128,128,0.6) !important; }.aistudio-active-highlight { outline: 2px solid #87a9ff !important; outline-offset: -2px !important; box-shadow: 0 0 0 0.5px rgba(0,0,0,0.3), inset 0 0 0 0.5px rgba(0,0,0,0.3) !important; }.aistudio-generating-blur { filter: blur(5px) grayscale(100%) brightness(28%) !important; transition: filter 0.3s ease; }#aistudio-focus-mode-tag { position: absolute; display: none; align-items: center; gap: 4px; background: #87a9ff; border-radius: 12px; z-index: 10000; padding: 8px; color: #32302c; font-family: Inter, sans-serif; font-size: 14px; font-style: normal; font-weight: 500; line-height: 21px; pointer-events: none; }#aistudio-hover-mode-tag { position: absolute; display: none; align-items: center; gap: 4px; background: rgba(128,128,128,0.6); border-radius: 12px; z-index: 10000; padding: 8px; color: white; font-family: Inter, sans-serif; font-size: 14px; font-style: normal; font-weight: 500; line-height: 21px; pointer-events: none; }.aistudio-img-icon { display: none; vertical-align: middle; pointer-events: auto; cursor: pointer; }.aistudio-img-icon.visible { display: inline-flex; }#aistudio-focus-mode-tag .aistudio-img-icon { position: relative; width: 26px; height: 26px; background: #32302c; border-radius: 6px; margin: -4px -4px -4px 0; }#aistudio-focus-mode-tag .aistudio-img-icon::before { content: ""; position: absolute; top: 4px; left: 4px; width: 18px; height: 18px; background-color: white; -webkit-mask-image: url("https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/edit_fix_auto/default/24px.svg"); -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-image: url("https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/edit_fix_auto/default/24px.svg"); mask-size: contain; mask-repeat: no-repeat; }#aistudio-hover-mode-tag .aistudio-img-icon { position: relative; width: 18px; height: 18px; margin-left: 4px; }#aistudio-hover-mode-tag .aistudio-img-icon::before { content: ""; position: absolute; top: 0; left: 0; width: 18px; height: 18px; background-color: white; -webkit-mask-image: url("https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/edit_fix_auto/default/24px.svg"); -webkit-mask-size: contain; -webkit-mask-repeat: no-repeat; mask-image: url("https://fonts.gstatic.com/s/i/short-term/release/googlesymbols/edit_fix_auto/default/24px.svg"); mask-size: contain; mask-repeat: no-repeat; }#aistudio-focus-mode-tag .aistudio-img-icon:hover, #aistudio-hover-mode-tag .aistudio-img-icon:hover { background: #424242 !important; }#aistudio-focus-mode-tag .aistudio-img-icon:active, #aistudio-hover-mode-tag .aistudio-img-icon:active { background: #393f51 !important; }</style></head>
+<body>
+  <div class="app-shell">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+        </div>
+        <div>
+          <div class="brand-title">목포 ON</div>
+          <div class="brand-sub">AI 로컬 상권 탐험 지도</div>
+        </div>
+        <span id="header-status-pill" class="status-pill">위치 추적 대기</span>
+      </div>
+
+      <nav class="nav-tabs" aria-label="주 메뉴">
+        <button class="nav-tab active" data-tab="map">현재 위치 찾기</button>
+        <button class="nav-tab" data-tab="list">내 주변 추천</button>
+        <button class="nav-tab" data-tab="dashboard">상권 분석</button>
+        <button class="nav-tab" data-tab="ai_model">AI 학습 모델</button>
+      </nav>
+
+      <div class="header-actions">
+        <button id="btn-track-toggle" class="btn btn-primary" type="button">위치 추적 시작</button>
+        <button id="btn-download-zip" class="btn btn-indigo" type="button" title="단일 index.html(프레임워크·package.json 없음) Vercel 배포용 ZIP 다운로드">ZIP 다운로드</button>
+        <button id="btn-theme-toggle" class="btn btn-muted btn-icon" type="button" aria-label="테마 전환">🌙</button>
+      </div>
+    </header>
+
+    <!-- Main Content Views -->
+    <main class="main-area">
+      <!-- TAB 1: Map & Side List & Detail Sheet -->
+      <section id="view-map" class="view-panel active">
+        <aside class="sidebar sidebar-desktop-only" id="desktop-sidebar-host"></aside>
+
+        <div class="map-wrap">
+          <div id="leaflet-map"></div>
+
+          <!-- Top Radius & Refresh Controls -->
+          <div class="map-top-bar">
+            <div class="radius-group" role="group" aria-label="검색 반경">
+              <button class="radius-btn" data-radius="500" type="button">500m</button>
+              <button class="radius-btn active" data-radius="1000" type="button">1km</button>
+              <button class="radius-btn" data-radius="2000" type="button">2km</button>
+              <button class="radius-btn" data-radius="3000" type="button">3km</button>
+            </div>
+            <button id="btn-refresh-nearby" class="btn btn-muted" type="button" disabled="">주변 새로고침</button>
+          </div>
+
+          <!-- Right Floating Map Buttons -->
+          <div class="map-right-controls">
+            <button id="btn-center-gps" class="map-ctl-btn" type="button" title="내 위치로 이동">◎</button>
+            <button id="btn-toggle-clusters" class="map-ctl-btn active" type="button" title="목포 4대 상권 군집 표시">◈</button>
+            <button id="btn-zoom-in" class="map-ctl-btn" type="button" title="확대">+</button>
+            <button id="btn-zoom-out" class="map-ctl-btn" type="button" title="축소">−</button>
+          </div>
+
+          <!-- Bottom Left GPS Telemetry HUD -->
+          <div class="gps-hud" id="gps-hud"></div>
+
+          <!-- Bottom Right Selected District Card -->
+          <div id="district-float-card" class="hud-card district-float-card"></div>
+        </div>
+
+        <!-- Detail Sheet (Desktop Right / Mobile Bottom) -->
+        <aside id="place-detail-sheet" class="detail-sheet"></aside>
+      </section>
+
+      <!-- TAB 2: Full List View -->
+      <section id="view-list" class="view-panel">
+        <div style="width: 100%; height: 100%; display: flex;">
+          <div id="full-list-host" style="flex: 1; height: 100%; overflow: hidden; display: flex; flex-direction: column; background: var(--bg-surface);"></div>
+        </div>
+      </section>
+
+      <!-- TAB 3: Commercial District Analysis -->
+      <section id="view-dashboard" class="view-panel">
+        <div class="page-scroll">
+          <div class="container" id="dashboard-container"></div>
+        </div>
+      </section>
+
+      <!-- TAB 4: AI Learning Model & Simulator -->
+      <section id="view-ai_model" class="view-panel">
+        <div class="page-scroll">
+          <div class="container" id="ai-lab-container"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Mobile Bottom Navigation -->
+    <nav class="mobile-nav" aria-label="모바일 메뉴">
+      <button class="mobile-tab-btn active" data-tab="map"><span>◎</span><span>현재 위치 찾기</span></button>
+      <button class="mobile-tab-btn" data-tab="list"><span>★</span><span>내 주변 추천</span></button>
+      <button class="mobile-tab-btn" data-tab="dashboard"><span>▤</span><span>상권 분석</span></button>
+      <button class="mobile-tab-btn" data-tab="ai_model"><span>◈</span><span>AI 학습 모델</span></button>
+    </nav>
+  </div>
+
+  <!-- Safari / HTTPS Permission Help Modal -->
+  <div id="permission-modal" class="modal-backdrop" role="dialog" aria-modal="true">
+    <div class="card" style="max-width: 440px; width: 100%;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <h3 style="margin:0; font-size:16px;">아이패드 Safari &amp; 브라우저 위치 권한 안내</h3>
+        <button id="btn-close-modal" class="btn btn-muted btn-icon" type="button">✕</button>
+      </div>
+      <div style="font-size:12px; color:var(--text-sub); line-height:1.65;">
+        <p style="margin-top:0;"><strong>1. 보안 연결 조건:</strong> iPad Safari는 <strong>HTTPS</strong>(예: Vercel 배포 URL) 환경에서만 실시간 GPS 추적을 허용합니다. 로컬 <code>file://</code> 더블 클릭 실행 시 브라우저 보안 정책에 따라 GPS가 제한될 수 있으며, 이 경우 ‘교육용 모의 주행’ 또는 ‘목포 상권 선택 탐험’을 즉시 이용하실 수 있습니다.</p>
+        <p><strong>2. Safari 위치 허용 방법:</strong></p>
+        <ul style="padding-left:18px; margin:6px 0;">
+          <li>아이패드 <strong>설정 &gt; 개인정보 보호 및 보안 &gt; 위치 서비스</strong>가 켜져 있는지 확인</li>
+          <li><strong>Safari 웹 사이트 &gt; 위치</strong>를 '허용' 또는 '묻기'로 설정</li>
+          <li>주소창 왼쪽 <strong>가A(웹사이트 설정) &gt; 위치 &gt; 허용</strong> 선택</li>
+        </ul>
+      </div>
+      <div style="display:flex; gap:8px; margin-top:14px;">
+        <button id="btn-modal-retry-gps" class="btn btn-primary" style="flex:1;" type="button">위치 추적 다시 시도</button>
+        <button id="btn-modal-sim" class="btn btn-amber" style="flex:1;" type="button">모의 주행 체험</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    'use strict';
+
+    // Capture pristine raw HTML template before DOM hydration for clean single-file ZIP download
+    var PRISTINE_HTML = ('<!doctype html>\n' + document.documentElement.outerHTML)
+      .replace(/<script[^>]*@vite\/client[^>]*><\/script>\s*/gi, '');
+
+    // =========================================================================
+    // 1. STATIC MOKPO COMMERCIAL DISTRICTS & REFERENCE ROUTES (NOT LIVE PLACES)
+    // =========================================================================
+    var MOKPO_DISTRICTS = [
+      {
+        id: 'historic_downtown',
+        koreanTitle: '원도심 & 근대역사문화거리',
+        description: '1897년 개항 이후 근대건축물, 목포근대역사관, 백년가게 제과점·백반집이 밀집된 도보 관광 상권',
+        centroid: [34.7876, 126.3842],
+        approxRadiusMeters: 800,
+        footTrafficIndex: 78,
+        highlights: ['목포근대역사관 1·2관', '목포역 도보권', '적산가옥 카페거리'],
+        color: '#0284c7'
+      },
+      {
+        id: 'peace_square',
+        koreanTitle: '평화광장 & 하당 신상권',
+        description: '춤추는 바다분수, 갓바위 해상보행교, 해안 테라스 카페와 남도 음식점이 어우러진 현대 수변 상권',
+        centroid: [34.7958, 126.4258],
+        approxRadiusMeters: 950,
+        footTrafficIndex: 88,
+        highlights: ['춤추는 바다분수', '천연기념물 갓바위', '해안 야경 카페'],
+        color: '#0d9488'
+      },
+      {
+        id: 'north_port',
+        koreanTitle: '북항 활어회 & 노을공원 상권',
+        description: '북항 활어회센터, 서해 낙조 명소 노을공원, 해상케이블카 북항승강장이 연결된 수산·관광 상권',
+        centroid: [34.8142, 126.3725],
+        approxRadiusMeters: 650,
+        footTrafficIndex: 65,
+        highlights: ['북항 활어회센터', '노을공원', '해상케이블카 승강장'],
+        color: '#d97706'
+      },
+      {
+        id: 'yudal_ocean',
+        koreanTitle: '유달산 & 대반동 해양스카이워크',
+        description: '서산동 시화골목, 유달산 노적봉, 대반동 스카이워크와 해변 상점이 이어지는 해양 감성 상권',
+        centroid: [34.7935, 126.3665],
+        approxRadiusMeters: 1100,
+        footTrafficIndex: 74,
+        highlights: ['목포 스카이워크', '서산동 시화골목', '유달산 노적봉'],
+        color: '#6366f1'
+      }
+    ];
+
+    var SIMULATION_ROUTES = [
+      {
+        id: 'route_historic',
+        name: '원도심 도보 코스 (목포역 → 근대역사관)',
+        description: '목포역에서 출발해 원도심 상점과 근대문화거리를 걸으며 주변 장소를 자동 탐색합니다.',
+        waypoints: [
+          { name: '목포역 광장', latitude: 34.7912, longitude: 126.3868, description: 'KTX 목포역 출발 지점' },
+          { name: '원도심 제과·상점가', latitude: 34.7895, longitude: 126.3862, description: '영산로 로데오·제과 상권' },
+          { name: '근대역사관 2관 앞', latitude: 34.7871, longitude: 126.3855, description: '근대 문화유산 거리 중심' },
+          { name: '근대역사관 1관 언덕', latitude: 34.7865, longitude: 126.3835, description: '유달산 자락 근대 건축 구간' }
+        ]
+      },
+      {
+        id: 'route_peace',
+        name: '평화광장 해안 코스 (바다분수 → 갓바위)',
+        description: '평화광장 해안도로를 따라 갓바위까지 이동하며 수변 음식점·카페를 탐색합니다.',
+        waypoints: [
+          { name: '평화광장 바다분수', latitude: 34.7952, longitude: 126.4262, description: '평화광장 중심 광장' },
+          { name: '해안 카페거리 교차로', latitude: 34.7960, longitude: 126.4278, description: '오션뷰 카페 밀집 구간' },
+          { name: '달맞이공원 산책로', latitude: 34.7942, longitude: 126.4295, description: '해안 산책 데크 구간' },
+          { name: '갓바위 해상보행교', latitude: 34.7928, longitude: 126.4312, description: '천연기념물 갓바위 입구' }
+        ]
+      },
+      {
+        id: 'route_yudal',
+        name: '서산동·스카이워크 코스 (시화골목 → 대반동)',
+        description: '서산동 시화골목에서 대반동 스카이워크까지 이동하는 해양 관광 코스입니다.',
+        waypoints: [
+          { name: '서산동 시화골목 입구', latitude: 34.7878, longitude: 126.3742, description: '연희네슈퍼 인근 골목' },
+          { name: '유달산 해안도로', latitude: 34.7940, longitude: 126.3680, description: '목포항 전망 해안로' },
+          { name: '목포 스카이워크', latitude: 34.7988, longitude: 126.3635, description: '대반동 해상 전망대' },
+          { name: '대반동 해변 상권', latitude: 34.7972, longitude: 126.3628, description: '목포대교 야경 해변가' }
+        ]
+      }
+    ];
+
+    var MOKPO_REFERENCE_FALLBACK_PLACES = [
+      { id: 'ref_clb', name: 'CLB베이커리 본점 (참고)', category: 'bakery_market', categoryName: '베이커리·시장', address: '전남 목포시 영산로75번길 14', latitude: 34.7895, longitude: 126.3862, openHours: '08:00 - 21:00', isOpen: true, rating: null, authenticity: 'reference_offline', description: '오프라인·API 실패 시 참고용으로만 구분 표시되는 목포 원도심 로컬 베이커리 정보입니다.' },
+      { id: 'ref_colombang', name: '코롬방제과점 (참고)', category: 'bakery_market', categoryName: '베이커리·시장', address: '전남 목포시 영산로75번길 7', latitude: 34.7898, longitude: 126.3865, openHours: '08:00 - 21:00', isOpen: true, rating: null, authenticity: 'reference_offline', description: '원도심 근대역사거리 인근 전통 제과점 참고 데이터입니다.' },
+      { id: 'ref_history1', name: '목포근대역사관 1관 (참고)', category: 'culture_history', categoryName: '문화·역사', address: '전남 목포시 영산로29번길 6', latitude: 34.7865, longitude: 126.3835, openHours: '09:00 - 18:00 (월 휴관)', isOpen: true, rating: null, authenticity: 'reference_offline', description: '국가사적 제289호 구 목포일본영사관 문화시설 참고 데이터입니다.' },
+      { id: 'ref_fountain', name: '평화광장 춤추는 바다분수 (참고)', category: 'ocean_view', categoryName: '관광명소·자연', address: '전남 목포시 미항로 115', latitude: 34.7952, longitude: 126.4262, openHours: null, isOpen: null, rating: null, authenticity: 'reference_offline', description: '평화광장 수변 공원 및 해상 분수 거점 참고 데이터입니다.' },
+      { id: 'ref_gatbawi', name: '갓바위 해상보행교 (참고)', category: 'culture_history', categoryName: '문화·역사', address: '전남 목포시 용해동 86-24', latitude: 34.7928, longitude: 126.4312, openHours: '06:00 - 23:00', isOpen: true, rating: null, authenticity: 'reference_offline', description: '천연기념물 제500호 목포 갓바위 해상 산책로 참고 데이터입니다.' },
+      { id: 'ref_skywalk', name: '목포 스카이워크 (참고)', category: 'ocean_view', categoryName: '관광명소·자연', address: '전남 목포시 유달로 59', latitude: 34.7988, longitude: 126.3635, openHours: '09:00 - 21:00', isOpen: true, rating: null, authenticity: 'reference_offline', description: '대반동 해안 해상 전망대 참고 데이터입니다.' }
+    ];
+
+    var CATEGORY_COLORS = {
+      gastronomy: '#e11d48',
+      cafe: '#0891b2',
+      bakery_market: '#d97706',
+      culture_history: '#4f46e5',
+      ocean_view: '#0284c7',
+      local_shop: '#059669'
+    };
+
+    var CATEGORY_LABELS = {
+      gastronomy: '음식점',
+      cafe: '카페·디저트',
+      bakery_market: '베이커리·시장',
+      culture_history: '문화·역사',
+      ocean_view: '관광명소·자연',
+      local_shop: '지역 상점'
+    };
+
+    var FEATURE_SPEC = [
+      { idx: 0, name: '사용자 음식·미식 취향', range: '0.0 ~ 1.0', desc: '사용자가 설정한 음식점 선호 가중치' },
+      { idx: 1, name: '사용자 카페·디저트 취향', range: '0.0 ~ 1.0', desc: '사용자가 설정한 카페 선호 가중치' },
+      { idx: 2, name: '사용자 관광·문화 취향', range: '0.0 ~ 1.0', desc: '문화·역사 및 자연 명소 평균 선호도' },
+      { idx: 3, name: '사용자 시장·상점 취향', range: '0.0 ~ 1.0', desc: '전통시장·베이커리 및 지역 상점 선호도' },
+      { idx: 4, name: '이동 가능 거리 반경', range: '0.17 ~ 1.0', desc: '선택 반경(500m~3km)을 3km 기준으로 정규화' },
+      { idx: 5, name: '현재 위치로부터 거리', range: '0.0 ~ 1.0', desc: 'Haversine 직선거리를 3km 기준으로 정규화' },
+      { idx: 6, name: '허용 반경 이내 여부', range: '0 또는 1', desc: '설정 반경 내 위치 시 1, 초과 시 0' },
+      { idx: 7, name: '업종: 음식점 (원-핫)', range: '0 또는 1', desc: '장소 업종이 음식점인 경우 1' },
+      { idx: 8, name: '업종: 카페·디저트 (원-핫)', range: '0 또는 1', desc: '장소 업종이 카페·디저트인 경우 1' },
+      { idx: 9, name: '업종: 관광·문화 (원-핫)', range: '0 또는 1', desc: '문화·역사 또는 관광명소인 경우 1' },
+      { idx: 10, name: '업종: 시장·상점 (원-핫)', range: '0 또는 1', desc: '베이커리·시장 또는 소상공인 상점인 경우 1' },
+      { idx: 11, name: '평점 정보 정규화', range: '0.0 ~ 1.0', desc: '미제공 시 중립값 0.50 적용 (허위 생성 안 함)' },
+      { idx: 12, name: '영업 상태 신호', range: '0 / 0.6 / 1', desc: '영업 확인=1, 종료=0, 미제공=0.6 중립 처리' }
+    ];
+
+    // =========================================================================
+    // 2. APPLICATION STATE
+    // =========================================================================
+    var state = {
+      activeTab: 'map',
+      aiSubTab: 'ml_lab',
+      dashSubTab: 'region',
+      isDark: false,
+      geo: {
+        status: 'idle',
+        isWatching: false,
+        coords: null,
+        isSimulated: false,
+        lastUpdated: null,
+        errorMessage: null,
+        lowAccuracyWarning: false
+      },
+      watchId: null,
+      sim: {
+        active: false,
+        routeId: 'route_historic',
+        index: 0,
+        speed: 1,
+        timer: null
+      },
+      nearby: {
+        status: 'idle',
+        errorMessage: null,
+        radiusMeters: 1000,
+        lastSearchedCoords: null,
+        dataOrigin: 'none',
+        places: []
+      },
+      inspectedDistrict: null,
+      selectedDistrictCard: null,
+      selectedPlace: null,
+      filters: {
+        category: 'all',
+        query: '',
+        sortBy: 'recommendation'
+      },
+      preferences: {
+        gastronomy: 0.8,
+        cafe: 0.75,
+        bakery_market: 0.8,
+        culture_history: 0.7,
+        ocean_view: 0.7,
+        local_shop: 0.75,
+        consentPersonalization: true
+      },
+      weights: {
+        distance: 0.40,
+        preference: 0.30,
+        authenticity: 0.20,
+        openStatus: 0.10
+      },
+      ml: {
+        status: 'untrained', // 'untrained' | 'training' | 'trained' | 'error'
+        model: null,
+        metrics: null,
+        epochHistory: [],
+        userFeedbackSamples: [],
+        errorMessage: null
+      },
+      dashboard: {
+        regionKey: 'historic_downtown',
+        placesByRegion: {},
+        loading: false,
+        error: null,
+        storeQuery: ''
+      },
+      showClusters: true
+    };
+
+    // Leaflet refs
+    var map = null;
+    var tileLayer = null;
+    var markersLayer = null;
+    var clustersLayer = null;
+    var userMarker = null;
+    var userAccuracyCircle = null;
+    var searchRadiusCircle = null;
+    var hasCenteredFirstGps = false;
+
+    // =========================================================================
+    // 3. GEOMETRY & RULE-BASED + TENSORFLOW.JS ML ENGINE
+    // =========================================================================
+    function calcDistanceMeters(lat1, lon1, lat2, lon2) {
+      var R = 6371000;
+      var p1 = lat1 * Math.PI / 180;
+      var p2 = lat2 * Math.PI / 180;
+      var dp = (lat2 - lat1) * Math.PI / 180;
+      var dl = (lon2 - lon1) * Math.PI / 180;
+      var a = Math.sin(dp / 2) * Math.sin(dp / 2) +
+              Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+      return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+    }
+
+    function estimateWalkMins(meters) {
+      return Math.max(1, Math.round(meters / 75));
+    }
+
+    function extractFeatureVector(category, distanceMeters, maxRadius, prefs, rating, isOpen) {
+      var consent = prefs.consentPersonalization;
+      var uFood = consent ? prefs.gastronomy : 0.65;
+      var uCafe = consent ? prefs.cafe : 0.65;
+      var uTour = consent ? (prefs.culture_history + prefs.ocean_view) / 2 : 0.65;
+      var uShop = consent ? (prefs.bakery_market + prefs.local_shop) / 2 : 0.65;
+      var radiusNorm = Math.min(1, Math.max(0.16, maxRadius / 3000));
+      var dist = typeof distanceMeters === 'number' ? distanceMeters : 500;
+      var distNorm = Math.min(1, Math.max(0, dist / 3000));
+      var withinRange = dist <= maxRadius ? 1 : 0;
+
+      return [
+        uFood, uCafe, uTour, uShop, radiusNorm, distNorm, withinRange,
+        category === 'gastronomy' ? 1 : 0,
+        category === 'cafe' ? 1 : 0,
+        (category === 'culture_history' || category === 'ocean_view') ? 1 : 0,
+        (category === 'bakery_market' || category === 'local_shop') ? 1 : 0,
+        typeof rating === 'number' ? Math.max(0, Math.min(1, (rating - 2.5) / 2.5)) : 0.5,
+        isOpen === true ? 1 : isOpen === false ? 0 : 0.6
+      ];
+    }
+
+    function createSeededRandom(seed) {
+      var s = seed >>> 0;
+      return function () {
+        s = (s + 0x6d2b79f5) | 0;
+        var t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function generateSyntheticDataset() {
+      var rand = createSeededRandom(20261116);
+      var cats = ['gastronomy', 'cafe', 'culture_history', 'ocean_view', 'bakery_market', 'local_shop'];
+      var radii = [500, 1000, 2000, 3000];
+      var all = [];
+
+      for (var i = 0; i < 240; i++) {
+        var prefs = {
+          gastronomy: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          cafe: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          culture_history: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          ocean_view: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          bakery_market: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          local_shop: Math.round((0.15 + rand() * 0.85) * 20) / 20,
+          consentPersonalization: true
+        };
+        var maxR = radii[Math.floor(rand() * radii.length)];
+        var cat = cats[i % cats.length];
+        var dist = Math.round(40 + rand() * 2900);
+        var rating = rand() > 0.35 ? 3.2 + rand() * 1.8 : null;
+        var openR = rand();
+        var isOpen = openR < 0.65 ? true : openR < 0.82 ? false : null;
+
+        var f = extractFeatureVector(cat, dist, maxR, prefs, rating, isOpen);
+        var prefAlign = f[0] * f[7] + f[1] * f[8] + f[2] * f[9] + f[3] * f[10];
+        var prox = Math.exp(-0.95 * (f[5] / Math.max(0.16, f[4])));
+        var rangeBoost = f[6] === 1 ? 0.14 : -0.22;
+        var openEffect = f[12] === 1 ? 0.14 : f[12] === 0 ? -0.30 : 0.02;
+        var qualEffect = (f[11] - 0.5) * 0.22;
+        var noise = (rand() - 0.5) * 0.06;
+        var logit = -0.82 + prefAlign * 1.65 + prox * 1.35 + rangeBoost + openEffect + qualEffect + noise;
+        var label = Math.max(0.02, Math.min(0.98, 1 / (1 + Math.exp(-logit * 1.35))));
+        all.push({ features: f, label: label });
+      }
+      return {
+        train: all.slice(0, 192),
+        test: all.slice(192)
+      };
+    }
+
+    async function trainMlModel() {
+      if (typeof window.tf === 'undefined') {
+        state.ml.status = 'error';
+        state.ml.errorMessage = 'TensorFlow.js CDN을 불러오지 못했습니다. 인터넷 연결을 확인해 주세요.';
+        renderAll();
+        return;
+      }
+
+      state.ml.status = 'training';
+      state.ml.epochHistory = [];
+      state.ml.errorMessage = null;
+      renderAll();
+
+      try {
+        try {
+          if (window.tf.getBackend() !== 'cpu') {
+            await window.tf.setBackend('cpu');
+          }
+          await window.tf.ready();
+        } catch (e) {
+          await window.tf.ready();
+        }
+
+        var split = generateSyntheticDataset();
+        var combinedTrain = split.train.slice();
+        state.ml.userFeedbackSamples.forEach(function (fb) {
+          combinedTrain.push(fb, fb);
+        });
+
+        var xTrain = window.tf.tensor2d(combinedTrain.map(function (s) { return s.features; }));
+        var yTrain = window.tf.tensor2d(combinedTrain.map(function (s) { return [s.label]; }));
+        var xTest = window.tf.tensor2d(split.test.map(function (s) { return s.features; }));
+        var yTest = window.tf.tensor2d(split.test.map(function (s) { return [s.label]; }));
+
+        var model = window.tf.sequential({
+          layers: [
+            window.tf.layers.dense({ inputShape: [13], units: 24, activation: 'relu', kernelInitializer: 'heNormal' }),
+            window.tf.layers.dense({ units: 12, activation: 'relu', kernelInitializer: 'heNormal' }),
+            window.tf.layers.dense({ units: 1, activation: 'sigmoid' })
+          ]
+        });
+
+        model.compile({
+          optimizer: window.tf.train.adam(0.025),
+          loss: 'meanSquaredError',
+          metrics: ['mae']
+        });
+
+        var history = [];
+        await model.fit(xTrain, yTrain, {
+          epochs: 26,
+          batchSize: 24,
+          shuffle: true,
+          validationData: [xTest, yTest],
+          callbacks: {
+            onEpochEnd: async function (epoch, logs) {
+              history.push({
+                epoch: epoch + 1,
+                trainLoss: Number((logs.loss || 0).toFixed(4)),
+                valLoss: Number((logs.val_loss || 0).toFixed(4))
+              });
+              state.ml.epochHistory = history.slice();
+              if (epoch % 5 === 0) await window.tf.nextFrame();
+            }
+          }
+        });
+
+        var predTensor = model.predict(xTest);
+        var preds = Array.from(await predTensor.data());
+        predTensor.dispose();
+
+        var actuals = split.test.map(function (s) { return s.label; });
+        var absSum = 0, sqSum = 0, correct = 0;
+        for (var i = 0; i < actuals.length; i++) {
+          var diff = preds[i] - actuals[i];
+          absSum += Math.abs(diff);
+          sqSum += diff * diff;
+          if ((preds[i] >= 0.5) === (actuals[i] >= 0.5)) correct++;
+        }
+
+        var validPairs = 0, agreedPairs = 0;
+        for (var a = 0; a < actuals.length; a++) {
+          for (var b = a + 1; b < actuals.length; b++) {
+            if (Math.abs(actuals[a] - actuals[b]) >= 0.08) {
+              validPairs++;
+              if ((actuals[a] > actuals[b]) === (preds[a] > preds[b])) agreedPairs++;
+            }
+          }
+        }
+
+        xTrain.dispose();
+        yTrain.dispose();
+        xTest.dispose();
+        yTest.dispose();
+
+        if (state.ml.model) state.ml.model.dispose();
+        state.ml.model = model;
+        state.ml.status = 'trained';
+        state.ml.metrics = {
+          backend: window.tf.getBackend(),
+          trainCount: combinedTrain.length,
+          testCount: split.test.length,
+          mae: Number((absSum / actuals.length).toFixed(4)),
+          rmse: Number(Math.sqrt(sqSum / actuals.length).toFixed(4)),
+          accuracy: Number((correct / actuals.length).toFixed(4)),
+          rankAgreement: Number((validPairs > 0 ? agreedPairs / validPairs : 0.8).toFixed(4))
+        };
+      } catch (err) {
+        state.ml.status = 'error';
+        state.ml.errorMessage = err && err.message ? err.message : '학습 중 오류가 발생했습니다.';
+      }
+      renderAll();
+    }
+
+    function resetMlModel() {
+      if (state.ml.model) {
+        state.ml.model.dispose();
+        state.ml.model = null;
+      }
+      state.ml.status = 'untrained';
+      state.ml.metrics = null;
+      state.ml.epochHistory = [];
+      state.ml.errorMessage = null;
+      renderAll();
+    }
+
+    function scoreAndRankPlaces(rawPlaces, refCoords) {
+      if (!rawPlaces || rawPlaces.length === 0) return [];
+
+      var mlScores = null;
+      if (state.ml.status === 'trained' && state.ml.model && window.tf) {
+        try {
+          var vecs = rawPlaces.map(function (p) {
+            var dist = refCoords ? calcDistanceMeters(refCoords.latitude, refCoords.longitude, p.latitude, p.longitude) : 500;
+            return extractFeatureVector(p.category, dist, state.nearby.radiusMeters, state.preferences, p.rating, p.isOpen);
+          });
+          mlScores = window.tf.tidy(function () {
+            var t = window.tf.tensor2d(vecs);
+            var out = state.ml.model.predict(t);
+            return Array.from(out.dataSync());
+          });
+        } catch (e) {
+          mlScores = null;
+        }
+      }
+
+      var w = state.weights;
+      var wSum = (w.distance + w.preference + w.authenticity + w.openStatus) || 1;
+
+      var scored = rawPlaces.map(function (p, idx) {
+        var dist = refCoords ? calcDistanceMeters(refCoords.latitude, refCoords.longitude, p.latitude, p.longitude) : undefined;
+        var distScore = dist !== undefined ? Math.exp(-dist / 1000) : 0.5;
+        var prefVal = state.preferences.consentPersonalization ? (state.preferences[p.category] || 0.65) : 0.65;
+        var authVal = (p.category === 'bakery_market' || p.category === 'local_shop' || p.category === 'gastronomy') ? 0.92 : 0.85;
+        var openVal = p.isOpen === true ? 1.0 : p.isOpen === false ? 0.15 : 0.6;
+
+        var ruleScore = Math.round(((distScore * w.distance + prefVal * w.preference + authVal * w.authenticity + openVal * w.openStatus) / wSum) * 100);
+        var mlScore = mlScores ? Math.round(Math.max(0, Math.min(1, mlScores[idx])) * 100) : null;
+        var isMl = mlScore !== null;
+
+        var reasons = [];
+        if (isMl) {
+          reasons.push('TF.js ML 예측 선호도 ' + mlScore + '%');
+        } else {
+          reasons.push('규칙 기반 거리·업종 계산');
+        }
+        if (dist !== undefined) {
+          reasons.push(dist <= 450 ? '가까운 거리 (도보 ' + estimateWalkMins(dist) + '분 · ' + dist + 'm)' : '반경 ' + dist + 'm 위치');
+        }
+        if (state.preferences.consentPersonalization && prefVal >= 0.75) {
+          reasons.push('선호 업종 (' + p.categoryName + ')');
+        }
+        if (p.category === 'bakery_market' || p.category === 'local_shop' || p.category === 'gastronomy') {
+          reasons.push('주변 상권 탐방에 적합');
+        }
+
+        return Object.assign({}, p, {
+          distanceMeters: dist,
+          walkingTimeMinutes: dist !== undefined ? estimateWalkMins(dist) : undefined,
+          ruleBasedScore: ruleScore,
+          mlPredictedScore: mlScore,
+          recommendationScore: isMl ? mlScore : ruleScore,
+          recommendationSource: isMl ? 'ml_tensorflow' : 'rule_based',
+          recommendationReasons: reasons.slice(0, 3)
+        });
+      });
+
+      // Diversity-Aware Greedy Reranking
+      var remaining = scored.slice();
+      var reranked = [];
+      var catCounts = {};
+      var seenPrefixes = {};
+
+      while (remaining.length > 0) {
+        var bestIdx = 0;
+        var bestAdj = -Infinity;
+        for (var i = 0; i < remaining.length; i++) {
+          var item = remaining[i];
+          var penalty = (catCounts[item.category] || 0) * 7 + (seenPrefixes[item.name.slice(0, 3)] ? 10 : 0);
+          var adj = item.recommendationScore - penalty;
+          if (adj > bestAdj) {
+            bestAdj = adj;
+            bestIdx = i;
+          }
+        }
+        var chosen = remaining.splice(bestIdx, 1)[0];
+        catCounts[chosen.category] = (catCounts[chosen.category] || 0) + 1;
+        seenPrefixes[chosen.name.slice(0, 3)] = true;
+        if (catCounts[chosen.category] === 1 && chosen.recommendationReasons.length < 3) {
+          chosen.recommendationReasons.push('업종 균형 추천');
+        }
+        reranked.push(chosen);
+      }
+
+      return reranked;
+    }
+
+    // =========================================================================
+    // 4. REAL NEARBY PLACE SEARCH VIA OPENSTREETMAP OVERPASS API (NO KEY NEEDED)
+    // =========================================================================
+    function classifyOsmTags(tags) {
+      var amenity = (tags.amenity || '').toLowerCase();
+      var shop = (tags.shop || '').toLowerCase();
+      var tourism = (tags.tourism || '').toLowerCase();
+      var historic = (tags.historic || '').toLowerCase();
+      var leisure = (tags.leisure || '').toLowerCase();
+
+      if (amenity === 'cafe' || amenity === 'ice_cream' || shop === 'coffee' || shop === 'tea') {
+        return { category: 'cafe', categoryName: '카페·디저트' };
+      }
+      if (shop === 'bakery' || amenity === 'marketplace' || shop === 'seafood' || shop === 'greengrocer') {
+        return { category: 'bakery_market', categoryName: '베이커리·시장' };
+      }
+      if (amenity === 'restaurant' || amenity === 'fast_food' || amenity === 'pub' || amenity === 'bar') {
+        return { category: 'gastronomy', categoryName: '음식점' };
+      }
+      if (tourism === 'museum' || tourism === 'gallery' || historic) {
+        return { category: 'culture_history', categoryName: '문화·역사' };
+      }
+      if (tourism === 'attraction' || tourism === 'viewpoint' || leisure === 'park') {
+        return { category: 'ocean_view', categoryName: '관광명소·자연' };
+      }
+      return { category: 'local_shop', categoryName: '지역 상점' };
+    }
+
+    function buildOsmAddress(tags) {
+      var parts = [];
+      if (tags['addr:city']) parts.push(tags['addr:city']);
+      if (tags['addr:street']) parts.push(tags['addr:street']);
+      if (tags['addr:housenumber']) parts.push(tags['addr:housenumber']);
+      if (parts.length > 0) return parts.join(' ');
+      if (tags['addr:full']) return tags['addr:full'];
+      return '주소 상세 정보 미등록 (좌표 기반 위치)';
+    }
+
+    var overpassCache = {};
+    var overpassCooldownUntil = 0;
+
+    async function fetchOverpassSingleEndpoint(url, query) {
+      var controller = new AbortController();
+      var timerId = setTimeout(function () { controller.abort(); }, 5500);
+      try {
+        var res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+          body: 'data=' + encodeURIComponent(query),
+          signal: controller.signal
+        });
+        clearTimeout(timerId);
+        if (!res.ok) throw new Error('Overpass HTTP ' + res.status);
+        return await res.json();
+      } catch (err) {
+        clearTimeout(timerId);
+        throw err;
+      }
+    }
+
+    async function queryPhotonOsmPlaces(lat, lng, radiusMeters) {
+      var urls = [
+        'https://photon.komoot.io/api/?q=' + encodeURIComponent('목포') + '&lat=' + lat + '&lon=' + lng + '&location_bias_scale=0.6&osm_tag=amenity:restaurant&osm_tag=amenity:cafe&osm_tag=tourism&osm_tag=shop&osm_tag=historic&limit=40',
+        'https://photon.komoot.io/api/?q=' + encodeURIComponent('카페') + '&lat=' + lat + '&lon=' + lng + '&location_bias_scale=0.6&osm_tag=amenity:cafe&osm_tag=amenity:restaurant&limit=30'
+      ];
+      var features = [];
+      for (var u = 0; u < urls.length; u++) {
+        var controller = new AbortController();
+        var tid = setTimeout(function () { controller.abort(); }, 7000);
+        try {
+          var resp = await fetch(urls[u], { signal: controller.signal });
+          clearTimeout(tid);
+          if (resp.ok) {
+            var json = await resp.json();
+            if (Array.isArray(json.features)) {
+              features = features.concat(json.features);
+            }
+          }
+        } catch (err) {
+          clearTimeout(tid);
+        }
+      }
+      if (features.length === 0) {
+        throw new Error('OpenStreetMap Photon API 응답 없음');
+      }
+
+      var seen = {};
+      var places = [];
+      for (var i = 0; i < features.length; i++) {
+        var f = features[i];
+        var props = f.properties || {};
+        var coords = f.geometry && Array.isArray(f.geometry.coordinates) ? f.geometry.coordinates : null;
+        if (!props.name || !coords || coords.length < 2) continue;
+        var pLng = Number(coords[0]);
+        var pLat = Number(coords[1]);
+        var dMeters = calcDistanceMeters(lat, lng, pLat, pLng);
+        if (dMeters > radiusMeters) continue;
+
+        var cleanName = String(props.name).trim();
+        if (!cleanName || seen[cleanName]) continue;
+        seen[cleanName] = true;
+
+        var tags = {};
+        if (props.osm_key && props.osm_value) {
+          tags[props.osm_key] = props.osm_value;
+        }
+        var catInfo = classifyOsmTags(tags);
+        var addrParts = [props.city, props.district, props.street, props.housenumber].filter(Boolean);
+        places.push({
+          id: 'osm_' + (props.osm_type || 'N') + '_' + (props.osm_id || i),
+          name: cleanName,
+          category: catInfo.category,
+          categoryName: catInfo.categoryName,
+          address: addrParts.length > 0 ? addrParts.join(' ') : '주소 상세 정보 미등록 (좌표 기반 위치)',
+          latitude: pLat,
+          longitude: pLng,
+          phone: null,
+          openHours: null,
+          isOpen: null,
+          rating: null,
+          authenticity: 'osm_live',
+          description: catInfo.categoryName + ' · OpenStreetMap(Photon) 실시간 주변 검색'
+        });
+      }
+      return places.slice(0, 30);
+    }
+
+    async function queryOverpassPlaces(lat, lng, radiusMeters) {
+      var cacheKey = lat.toFixed(3) + ',' + lng.toFixed(3) + ',' + radiusMeters;
+      if (overpassCache[cacheKey]) {
+        return overpassCache[cacheKey].slice();
+      }
+
+      var data = null;
+      if (Date.now() > overpassCooldownUntil) {
+        var query = '[out:json][timeout:8];(' +
+          'nwr(around:' + radiusMeters + ',' + lat + ',' + lng + ')["amenity"~"restaurant|cafe|fast_food|marketplace"];' +
+          'nwr(around:' + radiusMeters + ',' + lat + ',' + lng + ')["tourism"~"attraction|museum|viewpoint|gallery"];' +
+          'nwr(around:' + radiusMeters + ',' + lat + ',' + lng + ')["shop"~"bakery|gift|books|convenience|seafood|clothes|coffee"];' +
+          'nwr(around:' + radiusMeters + ',' + lat + ',' + lng + ')["historic"];' +
+        ');out center 40;';
+
+        try {
+          data = await fetchOverpassSingleEndpoint('https://overpass-api.de/api/interpreter', query);
+        } catch (e) {
+          overpassCooldownUntil = Date.now() + 60000;
+        }
+      }
+
+      if (data && Array.isArray(data.elements) && data.elements.length > 0) {
+        var elements = data.elements;
+        var seen = {};
+        var places = [];
+        for (var i = 0; i < elements.length; i++) {
+          var el = elements[i];
+          var tags = el.tags || {};
+          var name = (tags['name:ko'] || tags.name || '').trim();
+          var pLat = el.lat !== undefined ? el.lat : (el.center ? el.center.lat : null);
+          var pLng = el.lon !== undefined ? el.lon : (el.center ? el.center.lon : null);
+          if (!name || pLat === null || pLng === null) continue;
+          if (seen[name]) continue;
+          seen[name] = true;
+
+          var catInfo = classifyOsmTags(tags);
+          places.push({
+            id: 'osm_' + el.type + '_' + el.id,
+            name: name,
+            category: catInfo.category,
+            categoryName: catInfo.categoryName,
+            address: buildOsmAddress(tags),
+            latitude: pLat,
+            longitude: pLng,
+            phone: tags.phone || tags['contact:phone'] || null,
+            openHours: tags.opening_hours || null,
+            isOpen: null, // Overpass는 실시간 영업 Boolean 미제공 -> null 유지
+            rating: null, // OSM은 가짜 평점을 만들지 않음 -> null 유지
+            authenticity: 'osm_live',
+            description: tags.description || (catInfo.categoryName + ' · OpenStreetMap 실시간 주변 검색')
+          });
+        }
+        var trimmed = places.slice(0, 30);
+        if (trimmed.length > 0) {
+          overpassCache[cacheKey] = trimmed;
+          return trimmed.slice();
+        }
+      }
+
+      // Automatic fallback to Komoot Photon OpenStreetMap API (real OSM POI data, keyless, CORS *)
+      var photonPlaces = await queryPhotonOsmPlaces(lat, lng, radiusMeters);
+      overpassCache[cacheKey] = photonPlaces;
+      return photonPlaces.slice();
+    }
+
+    async function fetchLiveNearby(lat, lng, radiusMeters, isSimulated) {
+      state.nearby.status = 'loading';
+      state.nearby.errorMessage = null;
+      state.nearby.radiusMeters = radiusMeters;
+      renderAll();
+
+      try {
+        var places = await queryOverpassPlaces(lat, lng, radiusMeters);
+        state.nearby.places = places;
+        state.nearby.lastSearchedCoords = { latitude: lat, longitude: lng };
+        state.nearby.status = places.length === 0 ? 'empty' : 'success';
+        state.nearby.dataOrigin = isSimulated ? 'osm_simulated_gps' : (state.geo.coords ? 'osm_real_gps' : 'osm_district_search');
+      } catch (err) {
+        state.nearby.places = [];
+        state.nearby.status = 'error';
+        state.nearby.dataOrigin = 'none';
+        state.nearby.errorMessage = '실시간 주변 장소 API(OpenStreetMap) 연결에 실패했습니다. 가짜 장소를 대신 표시하지 않습니다.';
+      }
+      renderAll();
+    }
+
+    // =========================================================================
+    // 5. GEOLOCATION & SIMULATION CONTROLLERS
+    // =========================================================================
+    function formatClock(ts) {
+      if (!ts) return '-';
+      return new Date(ts).toLocaleTimeString('ko-KR', { hour12: false });
+    }
+
+    function startRealTracking() {
+      stopSimulation(true);
+
+      if (!navigator.geolocation) {
+        state.geo.status = 'unavailable';
+        state.geo.isWatching = false;
+        state.geo.errorMessage = '이 브라우저는 Geolocation API를 지원하지 않습니다.';
+        renderAll();
+        return;
+      }
+
+      if (!window.isSecureContext && location.protocol === 'file:') {
+        // Note: Some browsers restrict geolocation on file://; still try watchPosition, and handle error clearly.
+      } else if (!window.isSecureContext) {
+        state.geo.status = 'unavailable';
+        state.geo.isWatching = false;
+        state.geo.errorMessage = 'iPad Safari 등 최신 브라우저는 HTTPS 보안 환경에서만 위치 추적을 허용합니다.';
+        renderAll();
+        return;
+      }
+
+      if (state.watchId !== null) {
+        navigator.geolocation.clearWatch(state.watchId);
+        state.watchId = null;
+      }
+
+      state.geo.status = 'requesting';
+      state.geo.isWatching = true;
+      state.geo.isSimulated = false;
+      state.geo.errorMessage = null;
+      state.inspectedDistrict = null;
+      renderAll();
+
+      state.watchId = navigator.geolocation.watchPosition(
+        function (pos) {
+          var acc = Math.round(pos.coords.accuracy || 50);
+          var coords = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+            accuracy: acc,
+            timestamp: pos.timestamp || Date.now()
+          };
+          state.geo.status = 'granted';
+          state.geo.isWatching = true;
+          state.geo.coords = coords;
+          state.geo.isSimulated = false;
+          state.geo.lastUpdated = Date.now();
+          state.geo.errorMessage = null;
+          state.geo.lowAccuracyWarning = acc > 100;
+
+          var prev = state.nearby.lastSearchedCoords;
+          if (!prev || calcDistanceMeters(prev.latitude, prev.longitude, coords.latitude, coords.longitude) >= 150) {
+            fetchLiveNearby(coords.latitude, coords.longitude, state.nearby.radiusMeters, false);
+          } else {
+            renderAll();
+          }
+        },
+        function (err) {
+          var msg = '위치 정보를 가져올 수 없습니다.';
+          if (err && err.code === 1) {
+            state.geo.status = 'denied';
+            state.geo.isWatching = false;
+            if (state.watchId !== null) {
+              navigator.geolocation.clearWatch(state.watchId);
+              state.watchId = null;
+            }
+            msg = location.protocol === 'file:'
+              ? '로컬 파일(file://) 직접 실행 환경에서는 브라우저 보안 정책으로 GPS 권한이 차단될 수 있습니다. Vercel(HTTPS) 배포 후 허용하거나 ‘교육용 모의 주행’을 이용해 주세요.'
+              : '위치 접근 권한이 거부되었습니다. Safari 설정 또는 주소창 웹사이트 설정에서 위치 허용을 켜주세요.';
+          } else if (err && err.code === 2) {
+            state.geo.status = 'unavailable';
+            msg = 'GPS/Wi-Fi 위치 신호를 수신할 수 없습니다. 실외로 이동하거나 Wi-Fi를 켜고 다시 시도해 주세요.';
+          } else if (err && err.code === 3) {
+            state.geo.status = 'timeout';
+            msg = '위치 응답 시간이 초과되었습니다(15초). 다시 시도해 주세요.';
+          }
+          state.geo.errorMessage = msg;
+          renderAll();
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 5000 }
+      );
+    }
+
+    function stopRealTracking() {
+      if (state.watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(state.watchId);
+        state.watchId = null;
+      }
+      state.geo.isWatching = false;
+      if (state.geo.coords) state.geo.status = 'idle';
+      renderAll();
+    }
+
+    function getActiveSimRoute() {
+      return SIMULATION_ROUTES.find(function (r) { return r.id === state.sim.routeId; }) || SIMULATION_ROUTES[0];
+    }
+
+    function applySimPoint(idx) {
+      var route = getActiveSimRoute();
+      var clamped = Math.max(0, Math.min(route.waypoints.length - 1, idx));
+      state.sim.index = clamped;
+      var pt = route.waypoints[clamped];
+
+      state.geo.status = 'granted';
+      state.geo.isWatching = false;
+      state.geo.isSimulated = true;
+      state.geo.coords = { latitude: pt.latitude, longitude: pt.longitude, accuracy: 8, timestamp: Date.now() };
+      state.geo.lastUpdated = Date.now();
+      state.geo.errorMessage = null;
+      state.geo.lowAccuracyWarning = false;
+      state.inspectedDistrict = null;
+
+      var prev = state.nearby.lastSearchedCoords;
+      if (!prev || calcDistanceMeters(prev.latitude, prev.longitude, pt.latitude, pt.longitude) >= 80) {
+        fetchLiveNearby(pt.latitude, pt.longitude, state.nearby.radiusMeters, true);
+      } else {
+        renderAll();
+      }
+    }
+
+    function startSimulation(routeId) {
+      if (state.watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(state.watchId);
+        state.watchId = null;
+      }
+      if (routeId) state.sim.routeId = routeId;
+      state.sim.active = true;
+      if (state.sim.timer) clearInterval(state.sim.timer);
+
+      applySimPoint(0);
+      var interval = Math.max(2500, Math.round(6500 / state.sim.speed));
+      state.sim.timer = setInterval(function () {
+        var route = getActiveSimRoute();
+        applySimPoint((state.sim.index + 1) % route.waypoints.length);
+      }, interval);
+    }
+
+    function stopSimulation(silent) {
+      state.sim.active = false;
+      if (state.sim.timer) {
+        clearInterval(state.sim.timer);
+        state.sim.timer = null;
+      }
+      if (state.geo.isSimulated) {
+        state.geo.isSimulated = false;
+        state.geo.coords = null;
+        state.geo.status = 'idle';
+        state.nearby.places = [];
+        state.nearby.status = 'idle';
+        state.nearby.dataOrigin = 'none';
+        state.nearby.lastSearchedCoords = null;
+        state.selectedPlace = null;
+      }
+      if (!silent) renderAll();
+    }
+
+    // =========================================================================
+    // 6. MAP INITIALIZATION & SYNC (LEAFLET)
+    // =========================================================================
+    function initMap() {
+      if (map) return;
+      if (typeof window.L === 'undefined') {
+        var el = document.getElementById('leaflet-map');
+        if (el) {
+          el.innerHTML = '<div style="height:100%;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--text-sub);font-size:13px;">지도 CDN(Leaflet)을 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 새로고침해 주세요.</div>';
+        }
+        return;
+      }
+      map = window.L.map('leaflet-map', { center: [34.7876, 126.3842], zoom: 14, zoomControl: false });
+      updateMapTiles();
+      markersLayer = window.L.layerGroup().addTo(map);
+      clustersLayer = window.L.layerGroup().addTo(map);
+      setTimeout(function () { if (map) map.invalidateSize(); }, 250);
+    }
+
+    function updateMapTiles() {
+      if (!map) return;
+      if (tileLayer) map.removeLayer(tileLayer);
+      var url = state.isDark
+        ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
+        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+      tileLayer = window.L.tileLayer(url, { attribution: '&copy; OpenStreetMap', maxZoom: 19 }).addTo(map);
+    }
+
+    function syncMapLayers(processedPlaces) {
+      if (!map || !markersLayer || !clustersLayer) return;
+
+      // 1. User GPS Marker + Accuracy + Search Radius
+      if (!state.geo.coords) {
+        hasCenteredFirstGps = false;
+        if (userMarker) { map.removeLayer(userMarker); userMarker = null; }
+        if (userAccuracyCircle) { map.removeLayer(userAccuracyCircle); userAccuracyCircle = null; }
+        if (searchRadiusCircle) { map.removeLayer(searchRadiusCircle); searchRadiusCircle = null; }
+      } else {
+        var c = state.geo.coords;
+        var latLng = [c.latitude, c.longitude];
+        var iconHtml = '<div style="position:relative;display:flex;align-items:center;justify-content:center;width:28px;height:28px;">' +
+          '<div class="gps-pulse" style="' + (state.geo.isSimulated ? 'background:rgba(217,119,6,0.35);' : '') + '"></div>' +
+          '<div class="gps-core ' + (state.geo.isSimulated ? 'sim' : '') + '"></div></div>';
+        var uIcon = window.L.divIcon({ html: iconHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+        if (userMarker) { userMarker.setLatLng(latLng); userMarker.setIcon(uIcon); }
+        else { userMarker = window.L.marker(latLng, { icon: uIcon, zIndexOffset: 1000 }).addTo(map); }
+
+        var col = state.geo.isSimulated ? '#d97706' : state.geo.lowAccuracyWarning ? '#e11d48' : '#0284c7';
+        if (userAccuracyCircle) { userAccuracyCircle.setLatLng(latLng); userAccuracyCircle.setRadius(Math.max(8, Math.min(c.accuracy, 400))); userAccuracyCircle.setStyle({ color: col, fillColor: col }); }
+        else { userAccuracyCircle = window.L.circle(latLng, { radius: Math.max(8, Math.min(c.accuracy, 400)), color: col, fillColor: col, fillOpacity: 0.14, weight: 1.5 }).addTo(map); }
+
+        if (searchRadiusCircle) { searchRadiusCircle.setLatLng(latLng); searchRadiusCircle.setRadius(state.nearby.radiusMeters); }
+        else { searchRadiusCircle = window.L.circle(latLng, { radius: state.nearby.radiusMeters, color: '#475569', weight: 1.5, dashArray: '5,6', fillColor: '#0284c7', fillOpacity: 0.03, interactive: false }).addTo(map); }
+
+        if (!hasCenteredFirstGps || state.geo.isSimulated) {
+          map.panTo(latLng, { animate: true, duration: 0.5 });
+          hasCenteredFirstGps = true;
+        }
+      }
+
+      // 2. Clickable K-Means Mokpo District Clusters
+      clustersLayer.clearLayers();
+      if (state.showClusters) {
+        MOKPO_DISTRICTS.forEach(function (d) {
+          var isSel = state.selectedDistrictCard && state.selectedDistrictCard.id === d.id;
+          var circle = window.L.circle(d.centroid, {
+            radius: d.approxRadiusMeters,
+            color: d.color,
+            weight: isSel ? 2.5 : 1.5,
+            dashArray: isSel ? null : '6,6',
+            fillColor: d.color,
+            fillOpacity: isSel ? 0.14 : 0.06
+          });
+          var pickDist = function () {
+            state.selectedPlace = null;
+            state.selectedDistrictCard = d;
+            map.panTo(d.centroid, { animate: true });
+            renderAll();
+          };
+          circle.on('click', pickDist);
+          circle.addTo(clustersLayer);
+
+          var lblIcon = window.L.divIcon({
+            html: '<button type="button" style="background:' + d.color + ';color:#fff;border:none;border-radius:999px;padding:4px 10px;font-size:10px;font-weight:700;white-space:nowrap;cursor:pointer;transform:translate(-50%,-50%);box-shadow:0 2px 6px rgba(0,0,0,0.2);">' + d.koreanTitle.split('&')[0].trim() + '</button>',
+            className: '',
+            iconSize: [0, 0]
+          });
+          var lblMarker = window.L.marker(d.centroid, { icon: lblIcon, interactive: true });
+          lblMarker.on('click', pickDist);
+          lblMarker.addTo(clustersLayer);
+        });
+      }
+
+      // 3. Place Markers
+      markersLayer.clearLayers();
+      processedPlaces.forEach(function (p, idx) {
+        var isSel = state.selectedPlace && state.selectedPlace.id === p.id;
+        var baseCol = CATEGORY_COLORS[p.category] || '#64748b';
+        var isTop = idx < 3 && p.recommendationSource === 'ml_tensorflow';
+        var html = isTop
+          ? '<div style="width:30px;height:30px;border-radius:999px;background:#0f172a;border:2px solid #fbbf24;color:#fde68a;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 3px 8px rgba(0,0,0,0.3);transform:' + (isSel ? 'scale(1.2)' : 'scale(1)') + ';">★' + (idx + 1) + '</div>'
+          : '<div style="width:26px;height:26px;border-radius:999px;background:' + baseCol + ';color:#fff;border:2px solid #fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);transform:' + (isSel ? 'scale(1.22)' : 'scale(1)') + ';">' + escapeHtml(p.name.slice(0, 1)) + '</div>';
+
+        var icon = window.L.divIcon({ html: html, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+        var m = window.L.marker([p.latitude, p.longitude], { icon: icon });
+        m.on('click', function () {
+          state.selectedDistrictCard = null;
+          state.selectedPlace = p;
+          map.panTo([p.latitude, p.longitude], { animate: true });
+          renderAll();
+        });
+        m.addTo(markersLayer);
+      });
+    }
+
+    // =========================================================================
+    // 7. HELPER UTILITIES & RENDERERS
+    // =========================================================================
+    function escapeHtml(str) {
+      return String(str || '').replace(/[&<>"']/g, function (s) {
+        return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[s];
+      });
+    }
+
+    function getProcessedPlaces() {
+      var hasSource = Boolean(state.geo.coords || state.inspectedDistrict);
+      if (!hasSource) return [];
+      var refCoords = state.geo.coords || {
+        latitude: state.inspectedDistrict.centroid[0],
+        longitude: state.inspectedDistrict.centroid[1]
+      };
+      var scored = scoreAndRankPlaces(state.nearby.places, refCoords);
+      var filtered = scored.filter(function (p) {
+        if (state.filters.category !== 'all' && p.category !== state.filters.category) return false;
+        if (state.filters.query.trim()) {
+          var q = state.filters.query.toLowerCase().trim();
+          if (p.name.toLowerCase().indexOf(q) === -1 && p.address.toLowerCase().indexOf(q) === -1 && p.categoryName.toLowerCase().indexOf(q) === -1) {
+            return false;
+          }
+        }
+        return true;
+      });
+      if (state.filters.sortBy === 'distance') {
+        filtered.sort(function (a, b) { return (a.distanceMeters || 999999) - (b.distanceMeters || 999999); });
+      }
+      return filtered;
+    }
+
+    function renderPlacesListHtml(processedPlaces) {
+      var cats = [
+        { id: 'all', label: '전체' },
+        { id: 'gastronomy', label: '음식점' },
+        { id: 'cafe', label: '카페·디저트' },
+        { id: 'bakery_market', label: '베이커리·시장' },
+        { id: 'culture_history', label: '문화·역사' },
+        { id: 'ocean_view', label: '관광명소·자연' },
+        { id: 'local_shop', label: '지역 상점' }
+      ];
+
+      var isTrained = state.ml.status === 'trained';
+      var originLabel = state.nearby.dataOrigin === 'osm_real_gps'
+        ? '실시간 OSM 주변 검색 (' + processedPlaces.length + '곳)'
+        : state.nearby.dataOrigin === 'osm_simulated_gps'
+        ? '모의 주행 주변 검색 (' + processedPlaces.length + '곳 · 교육용)'
+        : state.nearby.dataOrigin === 'osm_district_search'
+        ? '선택 상권 주변 검색 (' + processedPlaces.length + '곳)'
+        : '주변 장소 ' + processedPlaces.length + '곳';
+
+      var bodyHtml = '';
+      if (!state.geo.coords && !state.inspectedDistrict) {
+        bodyHtml =
+          '<div style="padding:26px 18px;text-align:center;">' +
+            '<div style="font-size:14px;font-weight:700;margin-bottom:6px;">현재 위치 확인이 필요합니다</div>' +
+            '<p style="font-size:12px;color:var(--text-muted);line-height:1.6;margin:0 0 14px;">임의의 가짜 위치를 표시하지 않습니다. 위치 추적을 시작하거나 지도에서 목포 상권 원(군집)을 선택해 실제 주변 점포를 검색할 수 있습니다.</p>' +
+            '<div style="display:flex;flex-direction:column;gap:8px;">' +
+              '<button class="btn btn-primary js-start-gps" type="button">실시간 위치 추적 시작</button>' +
+              '<button class="btn btn-muted js-open-sim" type="button" style="color:var(--amber);">교육용 모의 주행 체험</button>' +
+            '</div>' +
+          '</div>';
+      } else if (state.nearby.status === 'loading') {
+        bodyHtml = '<div style="padding:36px 16px;text-align:center;font-size:12px;color:var(--text-muted);">주변 실제 장소를 검색하는 중입니다...</div>';
+      } else if (state.nearby.status === 'error') {
+        bodyHtml =
+          '<div style="padding:24px 16px;text-align:center;">' +
+            '<div style="font-size:13px;font-weight:700;color:var(--rose);margin-bottom:6px;">주변 장소 검색 오류</div>' +
+            '<p style="font-size:12px;color:var(--text-sub);margin:0 0 12px;">' + escapeHtml(state.nearby.errorMessage) + '</p>' +
+            '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">' +
+              '<button class="btn btn-primary js-refresh-nearby" type="button">다시 검색</button>' +
+              '<button class="btn btn-muted js-load-ref-fallback" type="button">참고 데이터 보기</button>' +
+            '</div>' +
+          '</div>';
+      } else if (processedPlaces.length === 0) {
+        bodyHtml = '<div style="padding:28px 16px;text-align:center;font-size:12px;color:var(--text-muted);">검색 조건에 맞는 장소가 없습니다. 반경을 넓히거나 필터를 변경해 보세요.</div>';
+      } else {
+        bodyHtml = processedPlaces.map(function (p) {
+          var isSel = state.selectedPlace && state.selectedPlace.id === p.id;
+          var isMl = p.recommendationSource === 'ml_tensorflow';
+          return '<div class="place-card ' + (isSel ? 'selected' : '') + '" data-place-id="' + escapeHtml(p.id) + '">' +
+            '<div class="place-card-top">' +
+              '<div style="min-width:0;flex:1;">' +
+                '<h3 class="place-title">' + escapeHtml(p.name) + '</h3>' +
+                '<div class="place-meta">' +
+                  escapeHtml(p.categoryName) +
+                  (p.distanceMeters !== undefined ? ' · <strong style="color:var(--primary);">' + p.distanceMeters + 'm (도보 ' + p.walkingTimeMinutes + '분)</strong>' : '') +
+                '</div>' +
+              '</div>' +
+              '<div class="place-score-box">' +
+                '<div class="place-score-val ' + (isMl ? 'ml' : '') + '">' + p.recommendationScore + '점</div>' +
+                '<div style="font-size:10px;color:var(--text-muted);">' + (isMl ? 'ML 예측' : '규칙 점수') + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--text-sub);margin-top:6px;">' + escapeHtml(p.address) + '</div>' +
+            '<div style="font-size:11px;color:var(--text-muted);margin-top:6px;">✦ ' + escapeHtml(p.recommendationReasons.join(' · ')) + '</div>' +
+          '</div>';
+        }).join('');
+      }
+
+      return '<div class="sidebar-controls">' +
+        '<div class="search-row">' +
+          '<input class="input-text js-search-input" type="text" placeholder="장소명, 주소, 업종 검색..." value="' + escapeHtml(state.filters.query) + '" />' +
+          '<button class="btn btn-muted btn-icon js-refresh-nearby" type="button" ' + ((!state.geo.coords && !state.inspectedDistrict) ? 'disabled' : '') + ' title="새로고침">↻</button>' +
+        '</div>' +
+        '<div class="cat-strip">' +
+          cats.map(function (c) {
+            return '<button class="cat-btn ' + (state.filters.category === c.id ? 'active' : '') + '" data-cat="' + c.id + '" type="button">' + c.label + '</button>';
+          }).join('') +
+        '</div>' +
+        '<div class="filter-row">' +
+          '<select class="select-box js-radius-select" aria-label="검색 반경">' +
+            [500, 1000, 2000, 3000].map(function (r) {
+              return '<option value="' + r + '" ' + (state.nearby.radiusMeters === r ? 'selected' : '') + '>반경 ' + (r < 1000 ? r + 'm' : (r / 1000) + 'km') + '</option>';
+            }).join('') +
+          '</select>' +
+          '<select class="select-box js-sort-select" aria-label="정렬 기준">' +
+            '<option value="recommendation" ' + (state.filters.sortBy === 'recommendation' ? 'selected' : '') + '>' + (isTrained ? 'TF.js ML 모델 추천순' : '규칙 기반 추천순 (ML 미학습)') + '</option>' +
+            '<option value="distance" ' + (state.filters.sortBy === 'distance' ? 'selected' : '') + '>가까운 거리순</option>' +
+          '</select>' +
+        '</div>' +
+      '</div>' +
+      '<div class="origin-bar"><span>' + escapeHtml(originLabel) + '</span><span>반경 ' + (state.nearby.radiusMeters < 1000 ? state.nearby.radiusMeters + 'm' : (state.nearby.radiusMeters / 1000) + 'km') + '</span></div>' +
+      '<div class="ml-bar ' + (isTrained ? 'trained' : '') + '">' +
+        '<span>' + (state.ml.status === 'training' ? 'TensorFlow.js 모델 학습 중...' : isTrained ? 'TF.js ML 예측 순위 적용 중 (MAE ' + state.ml.metrics.mae.toFixed(3) + ')' : '규칙 기반 추천 적용 중 (ML 미학습)') + '</span>' +
+        (isTrained
+          ? '<button class="btn btn-muted js-open-ai-tab" type="button" style="min-height:28px;font-size:11px;">모델 보기</button>'
+          : '<button class="btn btn-indigo js-train-ml" type="button" style="min-height:28px;font-size:11px;" ' + (state.ml.status === 'training' ? 'disabled' : '') + '>TF.js 모델 학습</button>') +
+      '</div>' +
+      '<div class="places-scroll">' + bodyHtml + '</div>';
+    }
+
+    function renderGpsHud() {
+      var el = document.getElementById('gps-hud');
+      if (!el) return;
+      var g = state.geo;
+
+      var html = '';
+      if (state.nearby.status === 'error') {
+        html += '<div class="hud-card notice-rose">' +
+          '<div style="font-weight:700;color:var(--rose);">실제 주변 장소 검색 실패</div>' +
+          '<div style="font-size:11px;margin-top:4px;">' + escapeHtml(state.nearby.errorMessage) + '</div>' +
+          '<div style="margin-top:8px;display:flex;gap:6px;">' +
+            '<button class="btn btn-primary js-refresh-nearby" type="button" style="min-height:34px;">다시 검색</button>' +
+            '<button class="btn btn-muted js-load-ref-fallback" type="button" style="min-height:34px;">참고 데이터 보기</button>' +
+          '</div>' +
+        '</div>';
+      }
+
+      if (g.coords) {
+        html += '<div class="hud-card">' +
+          '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+            '<div style="font-weight:700;">' +
+              (g.isSimulated ? '🟠 교육용 모의 주행 좌표' : g.isWatching ? '🔵 실제 GPS 위치 추적 중' : '⚪ 마지막 실제 GPS (추적 중지)') +
+            '</div>' +
+            (!g.isSimulated
+              ? '<button class="btn ' + (g.isWatching ? 'btn-danger-soft' : 'btn-primary') + ' js-track-toggle" type="button" style="min-height:32px;padding:0 10px;">' + (g.isWatching ? '중지' : '시작') + '</button>'
+              : '<button class="btn btn-muted js-stop-sim" type="button" style="min-height:32px;padding:0 10px;">모의 주행 종료</button>') +
+          '</div>' +
+          '<div class="hud-grid">' +
+            '<div><div style="color:var(--text-muted);">현재 좌표</div><div style="font-weight:700;">' + g.coords.latitude.toFixed(4) + ', ' + g.coords.longitude.toFixed(4) + '</div></div>' +
+            '<div><div style="color:var(--text-muted);">GPS 정확도</div><div style="font-weight:700;color:' + (g.lowAccuracyWarning ? 'var(--rose)' : 'var(--emerald)') + ';">±' + g.coords.accuracy + 'm</div></div>' +
+            '<div><div style="color:var(--text-muted);">마지막 갱신</div><div style="font-weight:700;">' + formatClock(g.lastUpdated) + '</div></div>' +
+          '</div>' +
+          (g.lowAccuracyWarning && !g.isSimulated
+            ? '<div class="notice-box notice-amber" style="margin-top:8px;padding:8px 10px;font-size:11px;">GPS 오차가 큽니다(±' + g.coords.accuracy + 'm). 실내에서는 Wi-Fi를 켜거나 실외로 이동해 주세요.</div>'
+            : '') +
+          (g.errorMessage ? '<div class="notice-box notice-rose" style="margin-top:8px;padding:8px 10px;font-size:11px;">' + escapeHtml(g.errorMessage) + '</div>' : '') +
+        '</div>';
+      } else {
+        html += '<div class="hud-card">' +
+          '<div style="font-weight:700;font-size:13px;">' + (g.status === 'requesting' ? '실시간 GPS 위치를 확인 중입니다...' : '현재 위치 미연결 (추적 시작 필요)') + '</div>' +
+          '<div style="font-size:11px;color:var(--text-sub);margin-top:4px;line-height:1.5;">' +
+            escapeHtml(g.errorMessage || '임의의 가짜 위치를 표시하지 않습니다. 위치 추적을 시작하거나 지도에서 목포 상권 군집을 눌러 탐색할 수 있습니다.') +
+          '</div>' +
+          '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;">' +
+            '<button class="btn btn-primary js-start-gps" type="button" style="min-height:36px;">위치 추적 시작</button>' +
+            '<button class="btn btn-muted js-open-help" type="button" style="min-height:36px;">Safari 설정</button>' +
+            '<button class="btn btn-muted js-open-sim" type="button" style="min-height:36px;color:var(--amber);">교육용 모의 주행</button>' +
+          '</div>' +
+        '</div>';
+      }
+      el.innerHTML = html;
+    }
+
+    function renderDetailSheet(processedPlaces) {
+      var sheet = document.getElementById('place-detail-sheet');
+      if (!sheet) return;
+      if (!state.selectedPlace || (!state.geo.coords && !state.inspectedDistrict)) {
+        state.selectedPlace = null;
+        sheet.classList.remove('open');
+        sheet.innerHTML = '';
+        return;
+      }
+      var p = processedPlaces.find(function (x) { return x.id === state.selectedPlace.id; });
+      if (!p) {
+        var refCoords = state.geo.coords || (state.inspectedDistrict ? { latitude: state.inspectedDistrict.centroid[0], longitude: state.inspectedDistrict.centroid[1] } : null);
+        p = scoreAndRankPlaces([state.selectedPlace], refCoords)[0] || state.selectedPlace;
+      }
+
+      sheet.classList.add('open');
+      var isMl = p.recommendationSource === 'ml_tensorflow';
+      var reasonsList = Array.isArray(p.recommendationReasons) ? p.recommendationReasons : ['규칙 기반 추천'];
+      var recScore = typeof p.recommendationScore === 'number' ? p.recommendationScore : 0;
+      var ruleScore = typeof p.ruleBasedScore === 'number' ? p.ruleBasedScore : recScore;
+      var isTourist = p.category === 'culture_history' || p.category === 'ocean_view';
+
+      // Tourist -> Local Commerce Linkage (800m)
+      var nearbyCommerce = [];
+      if (isTourist) {
+        nearbyCommerce = state.nearby.places.filter(function (c) {
+          return c.id !== p.id && ['gastronomy', 'cafe', 'bakery_market', 'local_shop'].indexOf(c.category) !== -1;
+        }).map(function (c) {
+          var d = calcDistanceMeters(p.latitude, p.longitude, c.latitude, c.longitude);
+          return Object.assign({}, c, { distFromSpot: d });
+        }).filter(function (c) { return c.distFromSpot <= 800; })
+          .sort(function (a, b) { return a.distFromSpot - b.distFromSpot; })
+          .slice(0, 4);
+      }
+
+      var googleUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + p.latitude + ',' + p.longitude;
+      var kakaoUrl = 'https://map.kakao.com/link/to/' + encodeURIComponent(p.name) + ',' + p.latitude + ',' + p.longitude;
+      var naverUrl = 'https://map.naver.com/v5/search/' + encodeURIComponent(p.name);
+
+      sheet.innerHTML =
+        '<div class="detail-header">' +
+          '<span style="font-size:11px;font-weight:700;color:' + (p.authenticity === 'osm_live' ? 'var(--primary)' : 'var(--amber)') + ';">' +
+            (p.authenticity === 'osm_live' ? '✓ OpenStreetMap 실시간 장소 정보' : '교육용 참고 데이터 (오프라인)') +
+          '</span>' +
+          '<button class="btn btn-muted btn-icon js-close-detail" type="button" aria-label="닫기">✕</button>' +
+        '</div>' +
+        '<div class="detail-body">' +
+          '<div>' +
+            '<div style="font-size:11px;font-weight:700;color:var(--primary);">' + escapeHtml(p.categoryName) + '</div>' +
+            '<h2 style="margin:4px 0;font-size:19px;">' + escapeHtml(p.name) + '</h2>' +
+            '<div style="font-size:11px;color:var(--text-muted);">' +
+              (typeof p.rating === 'number' ? '★ ' + p.rating.toFixed(1) : '평점 정보 미제공 (실데이터에 없는 평점을 생성하지 않음)') +
+            '</div>' +
+          '</div>' +
+          (p.distanceMeters !== undefined
+            ? '<div class="notice-box" style="background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.2);">' +
+                '<div style="font-size:11px;color:var(--text-sub);">기준 위치로부터 거리</div>' +
+                '<div style="font-size:16px;font-weight:800;margin-top:2px;">' + p.distanceMeters + 'm <span style="font-size:12px;font-weight:500;">(도보 약 ' + p.walkingTimeMinutes + '분)</span></div>' +
+              '</div>'
+            : '') +
+          '<div class="notice-box ' + (isMl ? 'notice-indigo' : '') + '" style="' + (!isMl ? 'background:var(--bg-muted);border:1px solid var(--border);' : '') + '">' +
+            '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+              '<div>' +
+                '<div style="font-weight:800;font-size:13px;">' + (isMl ? 'AI 학습 모델 추천 결과' : '규칙 기반 추천 결과 (AI 미학습)') + '</div>' +
+                '<div style="font-size:11px;color:var(--text-sub);margin-top:2px;">' +
+                  (isMl ? 'TF.js 신경망 예측 점수 (규칙 참고 점수: ' + ruleScore + '점)' : 'ML 모델 미학습 상태라 거리·업종 규칙으로 계산됨') +
+                '</div>' +
+              '</div>' +
+              '<div style="font-size:18px;font-weight:800;color:' + (isMl ? 'var(--indigo)' : 'var(--text-main)') + ';">' + recScore + '<span style="font-size:11px;font-weight:500;">/100</span></div>' +
+            '</div>' +
+            '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border);font-size:11px;">' +
+              '<strong>추천 이유:</strong> ' + escapeHtml(reasonsList.join(' · ')) +
+            '</div>' +
+            (isMl
+              ? '<div style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:6px;">' +
+                  '<span style="font-size:10px;color:var(--text-muted);">세션 재학습용 피드백(숫자 벡터만 저장):</span>' +
+                  '<div style="display:flex;gap:4px;">' +
+                    '<button class="btn btn-muted js-fb-like" data-id="' + escapeHtml(p.id) + '" type="button" style="min-height:30px;padding:0 8px;font-size:11px;">👍 적합</button>' +
+                    '<button class="btn btn-muted js-fb-dislike" data-id="' + escapeHtml(p.id) + '" type="button" style="min-height:30px;padding:0 8px;font-size:11px;">👎 비선호</button>' +
+                  '</div>' +
+                '</div>'
+              : '<button class="btn btn-indigo js-train-ml" type="button" style="width:100%;margin-top:10px;">TensorFlow.js 모델 학습하기</button>') +
+          '</div>' +
+          '<div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">' +
+            '<div><strong>주소:</strong> <span style="color:var(--text-sub);">' + escapeHtml(p.address) + '</span></div>' +
+            '<div><strong>영업시간:</strong> <span style="color:var(--text-sub);">' + escapeHtml(p.openHours || 'API에서 영업시간 정보를 제공하지 않았습니다.') + '</span></div>' +
+            (p.phone ? '<div><strong>전화:</strong> <a href="tel:' + escapeHtml(p.phone) + '" style="color:var(--primary);">' + escapeHtml(p.phone) + '</a></div>' : '') +
+          '</div>' +
+          (isTourist
+            ? '<div class="notice-box notice-emerald">' +
+                '<div style="font-weight:700;margin-bottom:6px;">이 관광지 주변 지역 상권 함께 둘러보기 (800m 이내)</div>' +
+                (nearbyCommerce.length > 0
+                  ? nearbyCommerce.map(function (c) {
+                      return '<button class="btn btn-muted js-pick-linked" data-id="' + escapeHtml(c.id) + '" type="button" style="width:100%;justify-content:space-between;margin-top:6px;">' +
+                        '<span style="overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(c.name) + ' (' + escapeHtml(c.categoryName) + ')</span>' +
+                        '<span style="color:var(--emerald);">' + c.distFromSpot + 'm →</span>' +
+                      '</button>';
+                    }).join('')
+                  : '<div style="font-size:11px;color:var(--text-sub);">현재 검색 반경 내 주변 음식점·카페가 함께 조회되면 이곳에 표시됩니다.</div>') +
+              '</div>'
+            : '') +
+          '<div class="notice-box notice-amber">' +
+            '<div style="font-weight:700;margin-bottom:4px;">상권 활성화 &amp; 소상공인 유입 제안 [규칙 기반 분석]</div>' +
+            '<div style="font-size:11px;line-height:1.55;">' +
+              (isTourist
+                ? '이 관광 거점 방문객에게 도보 10분 내 지역 카페·음식점·시장 동선을 연계 안내하고 이웃 매장 영수증 혜택을 제공하면 골목 상권 유입 효과가 높아집니다.'
+                : escapeHtml(p.categoryName) + ' 점포는 인근 관광지·유동 거점 방문객을 대상으로 휴무일/대표 메뉴 정보 최신화 및 인근 점포 교차 쿠폰 운영이 효과적입니다.') +
+            '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-weight:700;margin-bottom:6px;">외부 지도 길찾기</div>' +
+            '<div class="nav-links-grid">' +
+              '<a class="nav-link-btn" href="' + googleUrl + '" target="_blank" rel="noopener noreferrer" style="background:#0284c7;color:#fff;">구글지도</a>' +
+              '<a class="nav-link-btn" href="' + kakaoUrl + '" target="_blank" rel="noopener noreferrer" style="background:#fcd34d;color:#0f172a;">카카오맵</a>' +
+              '<a class="nav-link-btn" href="' + naverUrl + '" target="_blank" rel="noopener noreferrer" style="background:#059669;color:#fff;">네이버지도</a>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    function renderDistrictFloatCard() {
+      var card = document.getElementById('district-float-card');
+      if (!card) return;
+      if (!state.selectedDistrictCard || state.selectedPlace) {
+        card.classList.remove('open');
+        card.innerHTML = '';
+        return;
+      }
+      var d = state.selectedDistrictCard;
+      card.classList.add('open');
+      card.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">' +
+          '<div>' +
+            '<div style="font-size:10px;font-weight:700;color:var(--primary);">목포 선택 상권 (K-Means 참고 군집)</div>' +
+            '<div style="font-size:14px;font-weight:800;margin-top:2px;">' + escapeHtml(d.koreanTitle) + '</div>' +
+          '</div>' +
+          '<button class="btn btn-muted btn-icon js-close-dist-card" type="button" style="min-height:34px;width:34px;">✕</button>' +
+        '</div>' +
+        '<p style="font-size:11px;color:var(--text-sub);margin:6px 0 8px;line-height:1.5;">' + escapeHtml(d.description) + '</p>' +
+        '<div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">유동지수 ' + d.footTrafficIndex + '/100 · 추천: ' + (state.ml.status === 'trained' ? 'TF.js ML 활성' : '규칙 기반') + '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button class="btn btn-primary js-search-district-map" data-id="' + d.id + '" type="button" style="flex:1;">이 지역 실제 점포 검색</button>' +
+          '<button class="btn btn-muted js-open-district-dash" data-id="' + d.id + '" type="button">상권 분석</button>' +
+        '</div>';
+    }
+
+    function renderDashboard() {
+      var host = document.getElementById('dashboard-container');
+      if (!host) return;
+      var d = state.dashboard;
+
+      var regionPlaces = d.regionKey === 'live_gps'
+        ? state.nearby.places
+        : (d.placesByRegion[d.regionKey] || []);
+
+      var filteredStores = regionPlaces.filter(function (p) {
+        var q = d.storeQuery.trim().toLowerCase();
+        if (!q) return true;
+        return p.name.toLowerCase().indexOf(q) !== -1 || p.address.toLowerCase().indexOf(q) !== -1 || p.categoryName.toLowerCase().indexOf(q) !== -1;
+      });
+
+      var counts = { gastronomy: 0, cafe: 0, bakery_market: 0, culture_tour: 0, local_shop: 0 };
+      regionPlaces.forEach(function (p) {
+        if (p.category === 'gastronomy') counts.gastronomy++;
+        else if (p.category === 'cafe') counts.cafe++;
+        else if (p.category === 'bakery_market') counts.bakery_market++;
+        else if (p.category === 'culture_history' || p.category === 'ocean_view') counts.culture_tour++;
+        else counts.local_shop++;
+      });
+      var total = regionPlaces.length || 1;
+      var distStats = [
+        { label: '음식점', count: counts.gastronomy, pct: Math.round(counts.gastronomy / total * 100), color: '#e11d48' },
+        { label: '카페·디저트', count: counts.cafe, pct: Math.round(counts.cafe / total * 100), color: '#0891b2' },
+        { label: '베이커리·시장', count: counts.bakery_market, pct: Math.round(counts.bakery_market / total * 100), color: '#d97706' },
+        { label: '관광·문화', count: counts.culture_tour, pct: Math.round(counts.culture_tour / total * 100), color: '#4f46e5' },
+        { label: '지역 상점', count: counts.local_shop, pct: Math.round(counts.local_shop / total * 100), color: '#059669' }
+      ];
+
+      var selectedDist = MOKPO_DISTRICTS.find(function (x) { return x.id === d.regionKey; });
+
+      host.innerHTML =
+        '<div>' +
+          '<h1 style="margin:0;font-size:20px;">목포 상권 분석 &amp; 소상공인 고객 유입 전략</h1>' +
+          '<p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">선택한 목포 지역의 실제 검색 업종 분포를 집계하고, 소상공인 고객 유입 방안을 제안합니다. (단일 HTML 정적 모드: 매출 데이터·예측 미포함)</p>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<button class="btn ' + (state.dashSubTab === 'region' ? 'btn-primary' : 'btn-muted') + ' js-dash-tab" data-sub="region" type="button">지역 업종 분포·점포·전략</button>' +
+          '<button class="btn ' + (state.dashSubTab === 'prefs' ? 'btn-primary' : 'btn-muted') + ' js-dash-tab" data-sub="prefs" type="button">내 취향 &amp; 규칙 가중치 설정</button>' +
+        '</div>' +
+        (state.dashSubTab === 'region'
+          ? '<div class="card">' +
+              '<div style="font-size:13px;font-weight:700;margin-bottom:10px;">1. 분석할 목포 지역 선택 (반경 1km 실시간 검색)</div>' +
+              '<div class="grid-5">' +
+                '<button class="btn ' + (d.regionKey === 'live_gps' ? 'btn-primary' : 'btn-muted') + ' js-pick-dash-region" data-region="live_gps" type="button" style="flex-direction:column;height:auto;padding:10px;">' +
+                  '<span>내 GPS 주변</span><span style="font-size:10px;opacity:0.8;">' + (state.geo.coords ? state.nearby.places.length + '곳' : '연결 필요') + '</span>' +
+                '</button>' +
+                MOKPO_DISTRICTS.map(function (dist) {
+                  return '<button class="btn ' + (d.regionKey === dist.id ? 'btn-primary' : 'btn-muted') + ' js-pick-dash-region" data-region="' + dist.id + '" type="button" style="flex-direction:column;height:auto;padding:10px;">' +
+                    '<span>' + escapeHtml(dist.koreanTitle.split('&')[0].trim()) + '</span>' +
+                    '<span style="font-size:10px;opacity:0.8;">유동지수 ' + dist.footTrafficIndex + '</span>' +
+                  '</button>';
+                }).join('') +
+              '</div>' +
+            '</div>' +
+            '<div class="card">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+                '<div>' +
+                  '<div style="font-size:11px;font-weight:700;color:var(--text-muted);">[규칙·통계 기반 실시간 집계]</div>' +
+                  '<h2 style="margin:2px 0 0;font-size:16px;">' + escapeHtml(selectedDist ? selectedDist.koreanTitle : '내 현재 GPS 주변') + ' 업종 분포 (' + regionPlaces.length + '곳)</h2>' +
+                '</div>' +
+                (d.regionKey !== 'live_gps' ? '<button class="btn btn-muted js-reload-dash-region" type="button">새로고침</button>' : '') +
+              '</div>' +
+              (d.loading
+                ? '<div style="padding:24px;text-align:center;font-size:12px;color:var(--text-muted);">실제 점포 정보를 조회 중입니다...</div>'
+                : d.error
+                ? '<div class="notice-box notice-rose">' + escapeHtml(d.error) + '</div>'
+                : regionPlaces.length === 0
+                ? '<div style="padding:18px;font-size:12px;color:var(--text-muted);">상단 목포 지역 버튼을 눌러 실제 점포 분포를 조회하세요.</div>'
+                : '<div class="dist-bar-wrap" style="margin-bottom:12px;">' +
+                    distStats.map(function (s) {
+                      return s.count > 0 ? '<div style="width:' + Math.max(4, s.pct) + '%;background:' + s.color + ';" title="' + s.label + ': ' + s.count + '곳"></div>' : '';
+                    }).join('') +
+                  '</div>' +
+                  '<div class="grid-5">' +
+                    distStats.map(function (s) {
+                      return '<div style="padding:10px;border-radius:10px;background:var(--bg-muted);">' +
+                        '<div style="font-size:11px;font-weight:600;display:flex;align-items:center;gap:5px;"><span style="width:8px;height:8px;border-radius:999px;background:' + s.color + ';display:inline-block;"></span>' + s.label + '</div>' +
+                        '<div style="font-size:16px;font-weight:800;margin-top:4px;">' + s.count + '곳 <span style="font-size:11px;font-weight:500;color:var(--text-muted);">(' + s.pct + '%)</span></div>' +
+                      '</div>';
+                    }).join('') +
+                  '</div>') +
+            '</div>' +
+            '<div class="grid-2">' +
+              '<div class="card" style="display:flex;flex-direction:column;gap:10px;max-height:420px;">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                  '<h3 style="margin:0;font-size:14px;">검색 가능한 실제 점포 (' + filteredStores.length + '곳)</h3>' +
+                  '<span style="font-size:11px;color:var(--text-muted);">OSM 실데이터</span>' +
+                '</div>' +
+                '<input class="input-text js-dash-store-search" type="text" placeholder="점포명, 업종, 주소 검색..." value="' + escapeHtml(d.storeQuery) + '" />' +
+                '<div style="flex:1;overflow-y:auto;">' +
+                  (filteredStores.length > 0
+                    ? filteredStores.map(function (p) {
+                        return '<button class="btn btn-muted js-open-dash-place" data-id="' + escapeHtml(p.id) + '" type="button" style="width:100%;justify-content:space-between;margin-bottom:6px;text-align:left;height:auto;padding:8px 12px;">' +
+                          '<div style="min-width:0;overflow:hidden;"><div style="font-weight:700;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(p.name) + '</div><div style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(p.categoryName) + ' · ' + escapeHtml(p.address) + '</div></div>' +
+                          '<span>→</span>' +
+                        '</button>';
+                      }).join('')
+                    : '<div style="font-size:12px;color:var(--text-muted);padding:16px 0;">조회된 점포가 없습니다.</div>') +
+                '</div>' +
+              '</div>' +
+              '<div class="card" style="display:flex;flex-direction:column;gap:10px;">' +
+                '<div style="font-size:11px;font-weight:700;color:var(--amber);">[규칙·상권 구조 기반 소상공인 유입 제안]</div>' +
+                '<h3 style="margin:0;font-size:14px;">소상공인 고객 유입 경영전략</h3>' +
+                '<div class="notice-box notice-amber" style="font-size:11px;"><strong>데이터 정직성 고지:</strong> 실제 매출·POS 데이터가 없으므로 매출액이나 매출 증가율을 예측하지 않습니다. 또한 브라우저 단일 HTML 파일 보안 원칙상 외부 생성형 AI 키를 내장하지 않고, 관측된 업종 분포 기반의 실무 전략을 제공합니다.</div>' +
+                '<div style="font-size:12px;line-height:1.6;display:flex;flex-direction:column;gap:8px;">' +
+                  '<div style="padding:10px;border-radius:10px;background:var(--bg-muted);"><strong>전략 1. 관광·유동 거점 연계 동선 구축</strong><br/>' + (counts.culture_tour > 0 ? '인근 관광·문화시설(' + counts.culture_tour + '곳) 방문객을 반경 500m 내 음식점(' + counts.gastronomy + '곳)·카페(' + counts.cafe + '곳)로 안내하는 도보 코스를 운영합니다.' : '주변 점포(' + regionPlaces.length + '곳) 간 도보 이동 안내 지도를 매장 입구에 비치해 체류 시간을 연장합니다.') + '</div>' +
+                  '<div style="padding:10px;border-radius:10px;background:var(--bg-muted);"><strong>전략 2. 업종 교차 영수증·스탬프 협업</strong><br/>식사 점포 이용 후 인근 카페·베이커리·지역 상점(' + (counts.cafe + counts.bakery_market + counts.local_shop) + '곳) 방문 시 소정의 혜택을 제공하는 공동 프로모션을 제안합니다.</div>' +
+                  '<div style="padding:10px;border-radius:10px;background:var(--bg-muted);"><strong>전략 3. 영업시간·메뉴 공개 데이터 최신화</strong><br/>지도 앱에서 영업시간 정보가 누락되지 않도록 정기 휴무일과 대표 메뉴를 최신화해 모바일 검색 이탈을 줄입니다.</div>' +
+                '</div>' +
+              '</div>' +
+            '</div>'
+          : '<div class="card">' +
+              '<h3 style="margin:0 0 12px;font-size:15px;">내 업종 취향 설정 (ML 모델 추론 및 규칙 계산 입력)</h3>' +
+              '<div class="grid-2">' +
+                Object.keys(CATEGORY_LABELS).map(function (k) {
+                  var val = state.preferences[k];
+                  return '<div style="padding:12px;border-radius:12px;background:var(--bg-muted);">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin-bottom:6px;"><span>' + CATEGORY_LABELS[k] + '</span><span style="color:var(--primary);">' + Math.round(val * 100) + '%</span></div>' +
+                    '<input type="range" min="0" max="1" step="0.1" value="' + val + '" data-pref="' + k + '" class="js-pref-slider" style="width:100%;" />' +
+                  '</div>';
+                }).join('') +
+              '</div>' +
+            '</div>');
+    }
+
+    function renderAiLab() {
+      var host = document.getElementById('ai-lab-container');
+      if (!host) return;
+      var processed = getProcessedPlaces();
+      var samplePlace = processed[0] || null;
+      var sampleVec = samplePlace ? extractFeatureVector(samplePlace.category, samplePlace.distanceMeters, state.nearby.radiusMeters, state.preferences, samplePlace.rating, samplePlace.isOpen) : null;
+      var m = state.ml.metrics;
+      var hist = state.ml.epochHistory;
+      var route = getActiveSimRoute();
+
+      host.innerHTML =
+        '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+          '<div>' +
+            '<h1 style="margin:0;font-size:20px;">AI 학습 모델 &amp; 교육용 시뮬레이터</h1>' +
+            '<p style="margin:4px 0 0;font-size:12px;color:var(--text-muted);">TensorFlow.js 기반 추천 신경망의 학습·평가 과정과 규칙/생성형 AI 역할 구분을 투명하게 공개합니다.</p>' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;">' +
+            '<button class="btn ' + (state.aiSubTab === 'ml_lab' ? 'btn-indigo' : 'btn-muted') + ' js-ai-subtab" data-sub="ml_lab" type="button">AI 학습 모델 설명·실습</button>' +
+            '<button class="btn ' + (state.aiSubTab === 'sim' ? 'btn-amber' : 'btn-muted') + ' js-ai-subtab" data-sub="sim" type="button">교육용 모의 주행</button>' +
+          '</div>' +
+        '</div>' +
+        (state.aiSubTab === 'ml_lab'
+          ? '<div class="card" style="border-color:rgba(79,70,229,0.3);display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;">' +
+              '<div>' +
+                '<div style="font-size:15px;font-weight:800;">' +
+                  (state.ml.status === 'trained' ? '✓ TensorFlow.js 모델 학습 완료 (실시간 추천 반영 중)' : state.ml.status === 'training' ? '⏳ TensorFlow.js 모델 학습 진행 중...' : '⚙ 현재 미학습 상태 (규칙 기반 추천으로 대체 중)') +
+                '</div>' +
+                '<div style="font-size:12px;color:var(--text-sub);margin-top:4px;">' +
+                  (m ? 'Backend: ' + m.backend + ' · 학습 ' + m.trainCount + '건 / 평가 ' + m.testCount + '건 · 정확도 ' + (m.accuracy * 100).toFixed(1) + '%' : '학습된 모델이 없을 때는 거리·업종 규칙으로만 정렬하며, 이를 AI 학습 결과라고 표시하지 않습니다.') +
+                '</div>' +
+                (state.ml.errorMessage ? '<div style="font-size:12px;color:var(--rose);margin-top:4px;">' + escapeHtml(state.ml.errorMessage) + '</div>' : '') +
+              '</div>' +
+              '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                (state.ml.status === 'trained' ? '<button class="btn btn-muted js-reset-ml" type="button">모델 초기화 (규칙 비교)</button>' : '') +
+                '<button class="btn btn-indigo js-train-ml" type="button" ' + (state.ml.status === 'training' ? 'disabled' : '') + '>' + (state.ml.status === 'trained' ? 'ML 모델 재학습' : 'TensorFlow.js 모델 학습 실행') + '</button>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="card">' +
+              '<h2 style="margin:0 0 12px;font-size:15px;">1. 사용한 AI 기술 및 학습 방식 (역할 구분)</h2>' +
+              '<div class="grid-3">' +
+                '<div class="notice-box notice-indigo"><strong>[AI가 학습한 내용]</strong><br/>TensorFlow.js 다층 퍼셉트론(MLP: 13 → 24 ReLU → 12 ReLU → 1 Sigmoid)이 사용자 취향·이동 거리·업종·영업·평점 조합과 선호 확률(0~1) 사이의 비선형 관계를 Adam(MSE)으로 학습합니다.</div>' +
+                '<div class="notice-box" style="background:var(--bg-muted);border:1px solid var(--border);"><strong>[규칙으로 결정한 내용]</strong><br/>Haversine 직선거리 계산, 반경 필터, 업종 균형(다양성) 재정렬, K-Means 상권 좌표 묶기, 상권 업종 개수 집계, 미학습 시 대체 순위는 결정론적 규칙으로 처리합니다.</div>' +
+                '<div class="notice-box notice-amber"><strong>[생성형 AI / 정적 고지]</strong><br/>단일 index.html 정적 파일에서는 보안상 API 키를 노출하지 않으므로 외부 생성형 AI를 직접 호출하지 않고, 규칙 기반 경영전략 문구로 안내합니다.</div>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="card">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+                '<h2 style="margin:0;font-size:15px;">2. 학습에 사용한 입력 변수 (13개 Feature)</h2>' +
+                (samplePlace ? '<span style="font-size:11px;color:var(--primary);font-weight:700;">예시 입력: ' + escapeHtml(samplePlace.name) + '</span>' : '') +
+              '</div>' +
+              '<div style="overflow-x:auto;">' +
+                '<table class="spec-table"><thead><tr><th>#</th><th>입력 변수</th><th>범위</th><th>설명</th>' + (sampleVec ? '<th>현재 값</th>' : '') + '</tr></thead><tbody>' +
+                FEATURE_SPEC.map(function (f) {
+                  return '<tr><td>' + (f.idx + 1) + '</td><td><strong>' + f.name + '</strong></td><td>' + f.range + '</td><td>' + f.desc + '</td>' + (sampleVec ? '<td style="font-weight:700;color:var(--indigo);">' + sampleVec[f.idx].toFixed(2) + '</td>' : '') + '</tr>';
+                }).join('') +
+                '</tbody></table>' +
+              '</div>' +
+            '</div>' +
+
+            '<div class="card">' +
+              '<h2 style="margin:0 0 12px;font-size:15px;">3. 학습 데이터 수와 출처</h2>' +
+              '<div class="grid-3" style="margin-bottom:12px;">' +
+                '<div style="padding:12px;border-radius:12px;background:var(--bg-muted);"><div style="font-size:11px;color:var(--text-muted);">전체 교육용 가상 데이터</div><div style="font-size:18px;font-weight:800;">240건</div></div>' +
+                '<div style="padding:12px;border-radius:12px;background:rgba(2,132,199,0.08);"><div style="font-size:11px;color:var(--primary);">학습용 데이터 (80%)</div><div style="font-size:18px;font-weight:800;">' + (192 + state.ml.userFeedbackSamples.length * 2) + '건</div></div>' +
+                '<div style="padding:12px;border-radius:12px;background:var(--indigo-soft);"><div style="font-size:11px;color:var(--indigo);">평가용 데이터 (20%)</div><div style="font-size:18px;font-weight:800;">48건</div></div>' +
+              '</div>' +
+              '<div class="notice-box notice-amber">초기 단계의 실제 행동 로그 부족을 해결하기 위해 시드 고정 가상 데이터(240건)를 별도 생성해 학습·평가했습니다. 실시간 검색으로 얻은 실제 장소 데이터는 오직 추론 입력에만 사용되며 모델 학습에 저장·사용하지 않습니다.</div>' +
+            '</div>' +
+
+            '<div class="card">' +
+              '<h2 style="margin:0 0 12px;font-size:15px;">4. 학습 및 평가 과정</h2>' +
+              (hist.length > 0
+                ? '<div style="padding:12px;border-radius:12px;background:var(--bg-muted);margin-bottom:12px;">' +
+                    '<div style="font-size:11px;color:var(--text-sub);margin-bottom:6px;">Epoch별 손실 변화 (파랑: Train MSE · 보라: Test Validation MSE) — 최종 ' + hist[hist.length - 1].trainLoss + ' / ' + hist[hist.length - 1].valLoss + '</div>' +
+                    '<div class="loss-chart">' +
+                      hist.map(function (ep) {
+                        var maxL = 0.18;
+                        return '<div style="flex:1;display:flex;align-items:flex-end;gap:1px;height:100%;"><div style="flex:1;background:#0284c7;height:' + Math.max(6, Math.round(ep.trainLoss / maxL * 100)) + '%;border-radius:2px 2px 0 0;"></div><div style="flex:1;background:#4f46e5;height:' + Math.max(6, Math.round(ep.valLoss / maxL * 100)) + '%;border-radius:2px 2px 0 0;"></div></div>';
+                      }).join('') +
+                    '</div>' +
+                  '</div>' +
+                  (m
+                    ? '<div class="grid-4">' +
+                        '<div class="notice-box notice-emerald"><div style="font-size:11px;">평가셋 MAE</div><div style="font-size:18px;font-weight:800;">' + m.mae + '</div></div>' +
+                        '<div class="notice-box" style="background:rgba(2,132,199,0.08);"><div style="font-size:11px;">평가셋 RMSE</div><div style="font-size:18px;font-weight:800;">' + m.rmse + '</div></div>' +
+                        '<div class="notice-box notice-indigo"><div style="font-size:11px;">분류 정확도(@0.5)</div><div style="font-size:18px;font-weight:800;">' + (m.accuracy * 100).toFixed(1) + '%</div></div>' +
+                        '<div class="notice-box notice-amber"><div style="font-size:11px;">순위 쌍 일치율</div><div style="font-size:18px;font-weight:800;">' + (m.rankAgreement * 100).toFixed(1) + '%</div></div>' +
+                      '</div>'
+                    : '')
+                : '<div style="font-size:12px;color:var(--text-muted);">상단의 &apos;TensorFlow.js 모델 학습 실행&apos; 버튼을 누르면 26 Epoch 학습과 분리된 평가셋 검증 결과를 확인할 수 있습니다.</div>') +
+            '</div>' +
+
+            '<div class="card">' +
+              '<h2 style="margin:0 0 12px;font-size:15px;">5. 실제 모델의 예측 결과 (검색 장소 상위 8곳 비교)</h2>' +
+              (processed.length > 0
+                ? '<div style="overflow-x:auto;"><table class="spec-table"><thead><tr><th>순위</th><th>장소명</th><th>업종</th><th>거리</th><th>규칙 점수</th><th>ML 예측 점수</th><th>추천 이유</th></tr></thead><tbody>' +
+                  processed.slice(0, 8).map(function (p, i) {
+                    return '<tr><td><strong>' + (i + 1) + '</strong></td><td>' + escapeHtml(p.name) + '</td><td>' + escapeHtml(p.categoryName) + '</td><td>' + (p.distanceMeters !== undefined ? p.distanceMeters + 'm' : '-') + '</td><td>' + p.ruleBasedScore + '점</td><td style="font-weight:800;color:var(--indigo);">' + (p.mlPredictedScore !== null ? p.mlPredictedScore + '점' : '미학습') + '</td><td>' + escapeHtml(p.recommendationReasons.join(' · ')) + '</td></tr>';
+                  }).join('') +
+                  '</tbody></table></div>'
+                : '<div style="font-size:12px;color:var(--text-muted);">먼저 GPS 추적 또는 모의 주행/목포 상권 검색을 실행해 주변 장소를 불러오면 모델 예측 점수가 비교 표시됩니다.</div>') +
+            '</div>' +
+
+            '<div class="card">' +
+              '<h2 style="margin:0 0 12px;font-size:15px;">6. 모델의 한계와 개선 방향</h2>' +
+              '<div class="grid-2" style="font-size:12px;line-height:1.6;color:var(--text-sub);">' +
+                '<div style="padding:12px;border-radius:12px;background:var(--bg-muted);"><strong>한계:</strong> ① 초기 학습 데이터가 가상 효용 함수로 생성되어 실제 여행자의 복잡한 취향을 완벽히 반영하지 못함 ② OpenStreetMap 데이터에 사용자 평점이 없을 때 중립값(0.5)으로 처리됨 ③ 시간대·날씨·동반자 변수가 미포함됨.</div>' +
+                '<div style="padding:12px;border-radius:12px;background:rgba(2,132,199,0.08);"><strong>개선 방향:</strong> ① 사용자 동의를 받은 세션 피드백과 방문 시간대 피처 추가 ② 소상공인 공공데이터(백년가게·전통시장·지역화폐 가맹점) 결합 ③ 우천·야간 시간대 맞춤형 동선 가중치 확장.</div>' +
+              '</div>' +
+            '</div>'
+          : '<div class="notice-box notice-amber"><strong>교육용 모의 주행 시뮬레이터 (실제 GPS와 완전 분리):</strong> 목포 현지에 있지 않거나 실내에서 이동 동작을 테스트할 때 사용하는 가상 경로입니다.</div>' +
+            '<div class="card" style="display:flex;flex-direction:column;gap:14px;">' +
+              '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+                '<div><h2 style="margin:0;font-size:16px;">목포 상권 가상 이동 경로</h2><div style="font-size:12px;color:var(--amber);font-weight:700;">현재 경유지: ' + escapeHtml(route.waypoints[state.sim.index].name) + '</div></div>' +
+                '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                  '<button class="btn btn-muted js-switch-real-gps" type="button">실제 GPS로 복귀</button>' +
+                  '<button class="btn btn-amber js-toggle-sim" type="button">' + (state.sim.active ? '시뮬레이션 중지' : '모의 주행 시작') + '</button>' +
+                '</div>' +
+              '</div>' +
+              '<div class="grid-3">' +
+                SIMULATION_ROUTES.map(function (r) {
+                  return '<button class="btn ' + (r.id === route.id ? 'btn-amber' : 'btn-muted') + ' js-pick-sim-route" data-id="' + r.id + '" type="button" style="height:auto;padding:12px;flex-direction:column;align-items:flex-start;text-align:left;white-space:normal;">' +
+                    '<strong>' + escapeHtml(r.name) + '</strong><span style="font-size:11px;font-weight:400;opacity:0.85;">' + escapeHtml(r.description) + '</span>' +
+                  '</button>';
+                }).join('') +
+              '</div>' +
+              '<div style="display:flex;flex-direction:column;gap:6px;">' +
+                route.waypoints.map(function (wp, i) {
+                  var isCur = state.sim.active && i === state.sim.index;
+                  return '<button class="btn ' + (isCur ? 'btn-amber' : 'btn-muted') + ' js-step-sim" data-idx="' + i + '" type="button" style="justify-content:space-between;">' +
+                    '<span>' + escapeHtml(wp.name) + '</span><span style="font-size:11px;opacity:0.8;">' + escapeHtml(wp.description) + '</span>' +
+                  '</button>';
+                }).join('') +
+              '</div>' +
+            '</div>');
+    }
+
+    function renderAll() {
+      var processed = getProcessedPlaces();
+
+      // Header status & button
+      var pill = document.getElementById('header-status-pill');
+      var trackBtn = document.getElementById('btn-track-toggle');
+      if (pill) {
+        pill.className = 'status-pill ' + (state.geo.isSimulated ? 'sim-active' : state.geo.isWatching && state.geo.coords ? 'gps-active' : '');
+        pill.textContent = state.geo.isSimulated
+          ? '교육용 모의 주행'
+          : state.geo.isWatching && state.geo.coords
+          ? '실제 GPS 추적 중 (±' + state.geo.coords.accuracy + 'm)'
+          : state.geo.status === 'requesting'
+          ? 'GPS 신호 확인 중...'
+          : '위치 추적 대기';
+      }
+      if (trackBtn) {
+        trackBtn.textContent = state.geo.isWatching ? '위치 추적 중지' : '위치 추적 시작';
+        trackBtn.className = 'btn ' + (state.geo.isWatching ? 'btn-danger-soft' : 'btn-primary');
+      }
+
+      // Tabs
+      document.querySelectorAll('.nav-tab, .mobile-tab-btn').forEach(function (btn) {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === state.activeTab);
+      });
+      document.querySelectorAll('.view-panel').forEach(function (panel) {
+        panel.classList.toggle('active', panel.id === 'view-' + state.activeTab);
+      });
+
+      // Radius buttons + Refresh
+      document.querySelectorAll('.radius-btn').forEach(function (b) {
+        b.classList.toggle('active', Number(b.getAttribute('data-radius')) === state.nearby.radiusMeters);
+      });
+      var refBtn = document.getElementById('btn-refresh-nearby');
+      if (refBtn) {
+        refBtn.disabled = (!state.geo.coords && !state.inspectedDistrict) || state.nearby.status === 'loading';
+        refBtn.textContent = state.nearby.status === 'loading' ? '검색 중...' : '주변 새로고침';
+      }
+
+      // Lists
+      var listHtml = renderPlacesListHtml(processed);
+      var desktopHost = document.getElementById('desktop-sidebar-host');
+      var fullHost = document.getElementById('full-list-host');
+      if (desktopHost && state.activeTab === 'map') desktopHost.innerHTML = listHtml;
+      if (fullHost && state.activeTab === 'list') fullHost.innerHTML = listHtml;
+
+      renderGpsHud();
+      renderDistrictFloatCard();
+      renderDetailSheet(processed);
+      if (state.activeTab === 'dashboard') renderDashboard();
+      if (state.activeTab === 'ai_model') renderAiLab();
+
+      syncMapLayers(processed);
+      if (state.activeTab === 'map' && map) {
+        setTimeout(function () { map.invalidateSize(); }, 80);
+      }
+    }
+
+    // =========================================================================
+    // 8. EVENT DELEGATION & ZIP DOWNLOAD HANDLER
+    // =========================================================================
+    async function loadDashboardRegion(regionKey) {
+      if (regionKey === 'live_gps') {
+        state.dashboard.regionKey = 'live_gps';
+        renderAll();
+        return;
+      }
+      var dist = MOKPO_DISTRICTS.find(function (d) { return d.id === regionKey; });
+      if (!dist) return;
+      state.dashboard.regionKey = regionKey;
+      if (state.dashboard.placesByRegion[regionKey]) {
+        renderAll();
+        return;
+      }
+      state.dashboard.loading = true;
+      state.dashboard.error = null;
+      renderAll();
+      try {
+        var places = await queryOverpassPlaces(dist.centroid[0], dist.centroid[1], 1000);
+        state.dashboard.placesByRegion[regionKey] = places;
+      } catch (e) {
+        state.dashboard.error = '선택 지역 주변 점포 API 조회에 실패했습니다.';
+      }
+      state.dashboard.loading = false;
+      renderAll();
+    }
+
+    async function downloadZipPackage() {
+      if (typeof window.JSZip === 'undefined') {
+        var blob = new Blob([PRISTINE_HTML], { type: 'text/html;charset=utf-8' });
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'index.html';
+        a.click();
+        return;
+      }
+      var zip = new window.JSZip();
+      zip.file('index.html', PRISTINE_HTML);
+      var zipBlob = await zip.generateAsync({ type: 'blob' });
+      var url = URL.createObjectURL(zipBlob);
+      var link = document.createElement('a');
+      link.href = url;
+      link.download = 'mokpo-on-vercel-static.zip';
+      link.click();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+    }
+
+    document.addEventListener('click', function (e) {
+      var target = e.target.closest('button, .place-card');
+      if (!target) return;
+
+      if (target.id === 'btn-track-toggle' || target.classList.contains('js-track-toggle')) {
+        if (state.geo.isWatching) stopRealTracking();
+        else startRealTracking();
+        return;
+      }
+      if (target.classList.contains('js-start-gps')) { startRealTracking(); return; }
+      if (target.classList.contains('js-stop-sim')) { stopSimulation(false); return; }
+      if (target.id === 'btn-download-zip') { downloadZipPackage(); return; }
+      if (target.id === 'btn-theme-toggle') {
+        state.isDark = !state.isDark;
+        document.documentElement.classList.toggle('dark', state.isDark);
+        target.textContent = state.isDark ? '☀️' : '🌙';
+        updateMapTiles();
+        return;
+      }
+
+      if (target.hasAttribute('data-tab')) {
+        state.activeTab = target.getAttribute('data-tab');
+        if (state.activeTab === 'dashboard' && state.dashboard.regionKey !== 'live_gps' && !state.dashboard.placesByRegion[state.dashboard.regionKey]) {
+          loadDashboardRegion(state.dashboard.regionKey);
+        }
+        renderAll();
+        return;
+      }
+
+      if (target.hasAttribute('data-radius')) {
+        var r = Number(target.getAttribute('data-radius'));
+        state.nearby.radiusMeters = r;
+        var c = state.geo.coords || (state.inspectedDistrict ? { latitude: state.inspectedDistrict.centroid[0], longitude: state.inspectedDistrict.centroid[1] } : null);
+        if (c) fetchLiveNearby(c.latitude, c.longitude, r, state.geo.isSimulated);
+        else renderAll();
+        return;
+      }
+
+      if (target.id === 'btn-refresh-nearby' || target.classList.contains('js-refresh-nearby')) {
+        var refC = state.geo.coords || (state.inspectedDistrict ? { latitude: state.inspectedDistrict.centroid[0], longitude: state.inspectedDistrict.centroid[1] } : null);
+        if (refC) fetchLiveNearby(refC.latitude, refC.longitude, state.nearby.radiusMeters, state.geo.isSimulated);
+        return;
+      }
+
+      if (target.classList.contains('js-load-ref-fallback')) {
+        state.nearby.places = MOKPO_REFERENCE_FALLBACK_PLACES.slice();
+        state.nearby.status = 'success';
+        state.nearby.dataOrigin = 'reference_offline';
+        state.nearby.errorMessage = null;
+        if (!state.inspectedDistrict && !state.geo.coords) state.inspectedDistrict = MOKPO_DISTRICTS[0];
+        renderAll();
+        return;
+      }
+
+      if (target.id === 'btn-center-gps') {
+        if (state.geo.coords && map) map.setView([state.geo.coords.latitude, state.geo.coords.longitude], 15, { animate: true });
+        else startRealTracking();
+        return;
+      }
+      if (target.id === 'btn-toggle-clusters') {
+        state.showClusters = !state.showClusters;
+        target.classList.toggle('active', state.showClusters);
+        renderAll();
+        return;
+      }
+      if (target.id === 'btn-zoom-in' && map) { map.zoomIn(); return; }
+      if (target.id === 'btn-zoom-out' && map) { map.zoomOut(); return; }
+
+      if (target.classList.contains('js-open-help')) { document.getElementById('permission-modal').classList.add('open'); return; }
+      if (target.id === 'btn-close-modal') { document.getElementById('permission-modal').classList.remove('open'); return; }
+      if (target.id === 'btn-modal-retry-gps') { document.getElementById('permission-modal').classList.remove('open'); startRealTracking(); return; }
+      if (target.id === 'btn-modal-sim' || target.classList.contains('js-open-sim')) {
+        document.getElementById('permission-modal').classList.remove('open');
+        state.activeTab = 'ai_model';
+        state.aiSubTab = 'sim';
+        renderAll();
+        return;
+      }
+
+      if (target.classList.contains('cat-btn')) {
+        state.filters.category = target.getAttribute('data-cat');
+        renderAll();
+        return;
+      }
+
+      if (target.classList.contains('js-train-ml')) { trainMlModel(); return; }
+      if (target.classList.contains('js-reset-ml')) { resetMlModel(); return; }
+      if (target.classList.contains('js-open-ai-tab')) { state.activeTab = 'ai_model'; state.aiSubTab = 'ml_lab'; renderAll(); return; }
+      if (target.classList.contains('js-ai-subtab')) { state.aiSubTab = target.getAttribute('data-sub'); renderAll(); return; }
+
+      if (target.classList.contains('place-card')) {
+        var pid = target.getAttribute('data-place-id');
+        var found = state.nearby.places.find(function (x) { return x.id === pid; });
+        if (found) {
+          state.selectedDistrictCard = null;
+          state.selectedPlace = found;
+          if (state.activeTab === 'list') state.activeTab = 'map';
+          if (map) map.panTo([found.latitude, found.longitude], { animate: true });
+          renderAll();
+        }
+        return;
+      }
+
+      if (target.classList.contains('js-close-detail')) { state.selectedPlace = null; renderAll(); return; }
+      if (target.classList.contains('js-pick-linked')) {
+        var lid = target.getAttribute('data-id');
+        var lplace = state.nearby.places.find(function (x) { return x.id === lid; });
+        if (lplace) { state.selectedPlace = lplace; if (map) map.panTo([lplace.latitude, lplace.longitude], { animate: true }); renderAll(); }
+        return;
+      }
+
+      if (target.classList.contains('js-fb-like') || target.classList.contains('js-fb-dislike')) {
+        var fid = target.getAttribute('data-id');
+        var fplace = state.nearby.places.find(function (x) { return x.id === fid; });
+        if (fplace) {
+          var vec = extractFeatureVector(fplace.category, fplace.distanceMeters, state.nearby.radiusMeters, state.preferences, fplace.rating, fplace.isOpen);
+          state.ml.userFeedbackSamples.push({ features: vec, label: target.classList.contains('js-fb-like') ? 0.94 : 0.12 });
+          target.textContent = '✓ 반영됨';
+        }
+        return;
+      }
+
+      if (target.classList.contains('js-close-dist-card')) { state.selectedDistrictCard = null; renderAll(); return; }
+      if (target.classList.contains('js-search-district-map')) {
+        var did = target.getAttribute('data-id');
+        var dObj = MOKPO_DISTRICTS.find(function (x) { return x.id === did; });
+        if (dObj) {
+          state.inspectedDistrict = dObj;
+          fetchLiveNearby(dObj.centroid[0], dObj.centroid[1], state.nearby.radiusMeters, false);
+        }
+        return;
+      }
+      if (target.classList.contains('js-open-district-dash')) {
+        var ddId = target.getAttribute('data-id');
+        state.activeTab = 'dashboard';
+        loadDashboardRegion(ddId);
+        return;
+      }
+
+      if (target.classList.contains('js-dash-tab')) { state.dashSubTab = target.getAttribute('data-sub'); renderAll(); return; }
+      if (target.classList.contains('js-pick-dash-region')) { loadDashboardRegion(target.getAttribute('data-region')); return; }
+      if (target.classList.contains('js-reload-dash-region')) {
+        delete state.dashboard.placesByRegion[state.dashboard.regionKey];
+        loadDashboardRegion(state.dashboard.regionKey);
+        return;
+      }
+      if (target.classList.contains('js-open-dash-place')) {
+        var dpId = target.getAttribute('data-id');
+        var regionList = state.dashboard.regionKey === 'live_gps' ? state.nearby.places : (state.dashboard.placesByRegion[state.dashboard.regionKey] || []);
+        var dp = regionList.find(function (x) { return x.id === dpId; });
+        if (dp) {
+          if (!state.nearby.places.some(function (x) { return x.id === dp.id; })) {
+            state.nearby.places = regionList.slice();
+            state.nearby.status = 'success';
+            state.nearby.dataOrigin = 'osm_district_search';
+            state.inspectedDistrict = MOKPO_DISTRICTS.find(function (x) { return x.id === state.dashboard.regionKey; }) || null;
+          }
+          state.selectedPlace = dp;
+          state.activeTab = 'map';
+          if (map) map.setView([dp.latitude, dp.longitude], 16, { animate: true });
+          renderAll();
+        }
+        return;
+      }
+
+      if (target.classList.contains('js-toggle-sim')) {
+        if (state.sim.active) stopSimulation(false);
+        else { startSimulation(); state.activeTab = 'map'; renderAll(); }
+        return;
+      }
+      if (target.classList.contains('js-pick-sim-route')) {
+        startSimulation(target.getAttribute('data-id'));
+        state.activeTab = 'map';
+        renderAll();
+        return;
+      }
+      if (target.classList.contains('js-step-sim')) {
+        state.sim.active = true;
+        applySimPoint(Number(target.getAttribute('data-idx')));
+        state.activeTab = 'map';
+        renderAll();
+        return;
+      }
+      if (target.classList.contains('js-switch-real-gps')) {
+        startRealTracking();
+        state.activeTab = 'map';
+        renderAll();
+      }
+    });
+
+    document.addEventListener('input', function (e) {
+      if (e.target.classList.contains('js-search-input')) {
+        state.filters.query = e.target.value;
+        var pos = e.target.selectionStart;
+        renderAll();
+        var nextInput = document.querySelector('#view-' + state.activeTab + ' .js-search-input');
+        if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(pos, pos); }
+      } else if (e.target.classList.contains('js-dash-store-search')) {
+        state.dashboard.storeQuery = e.target.value;
+        var dpos = e.target.selectionStart;
+        renderDashboard();
+        var nextDash = document.querySelector('.js-dash-store-search');
+        if (nextDash) { nextDash.focus(); nextDash.setSelectionRange(dpos, dpos); }
+      } else if (e.target.classList.contains('js-pref-slider')) {
+        state.preferences[e.target.getAttribute('data-pref')] = parseFloat(e.target.value);
+        renderAll();
+      }
+    });
+
+    document.addEventListener('change', function (e) {
+      if (e.target.classList.contains('js-radius-select')) {
+        var r = Number(e.target.value);
+        state.nearby.radiusMeters = r;
+        var c = state.geo.coords || (state.inspectedDistrict ? { latitude: state.inspectedDistrict.centroid[0], longitude: state.inspectedDistrict.centroid[1] } : null);
+        if (c) fetchLiveNearby(c.latitude, c.longitude, r, state.geo.isSimulated);
+        else renderAll();
+      } else if (e.target.classList.contains('js-sort-select')) {
+        state.filters.sortBy = e.target.value;
+        renderAll();
+      }
+    });
+
+    // Boot
+    initMap();
+    renderAll();
+  })();
+  </script></body></html>
